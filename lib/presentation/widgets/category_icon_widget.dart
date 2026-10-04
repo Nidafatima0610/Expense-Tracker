@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_categories.dart';
+import '../../providers/app_state_scope.dart';
 
 class CategoryIconWidget extends StatelessWidget {
   final String category;
@@ -17,19 +18,34 @@ class CategoryIconWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final meta = AppCategories.getCategoryMeta(category, isExpense: isExpense);
+    IconData icon;
+    Color color;
+
+    final appState =
+        context.dependOnInheritedWidgetOfExactType<AppStateScope>()?.notifier;
+    final customCat = appState?.getCategoryByName(category);
+
+    if (customCat != null) {
+      icon = customCat.icon;
+      color = customCat.color;
+    } else {
+      final meta =
+          AppCategories.getCategoryMeta(category, isExpense: isExpense);
+      icon = meta.icon;
+      color = meta.color;
+    }
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: meta.color.withValues(alpha: 0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(size * 0.3),
       ),
       child: Center(
         child: Icon(
-          meta.icon,
-          color: meta.color,
+          icon,
+          color: color,
           size: iconSize,
         ),
       ),

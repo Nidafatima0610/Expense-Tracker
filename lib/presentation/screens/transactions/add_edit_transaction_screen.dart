@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/constants/app_categories.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/primary_button.dart';
+
+import '../categories/manage_categories_screen.dart';
 
 class AddEditTransactionScreen extends StatefulWidget {
   final TransactionModel? transactionToEdit;
@@ -31,6 +32,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
   late TextEditingController _noteController;
   late DateTime _selectedDate;
   late String _selectedCategory;
+  late RecurrenceFrequency _recurrence;
   bool _isSaving = false;
 
   bool get _isEditing => widget.transactionToEdit != null;
@@ -47,15 +49,15 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       _noteController = TextEditingController(text: edit.note ?? '');
       _selectedDate = edit.date;
       _selectedCategory = edit.category;
+      _recurrence = edit.recurrence;
     } else {
       _type = widget.initialType;
       _titleController = TextEditingController();
       _amountController = TextEditingController();
       _noteController = TextEditingController();
       _selectedDate = DateTime.now();
-      _selectedCategory = _type == TransactionType.expense
-          ? AppCategories.expenseCategories.first.name
-          : AppCategories.incomeCategories.first.name;
+      _selectedCategory = '';
+      _recurrence = RecurrenceFrequency.none;
     }
   }
 
@@ -71,10 +73,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
     if (_type == newType) return;
     setState(() {
       _type = newType;
-      // Default to first category of the new type
-      _selectedCategory = _type == TransactionType.expense
-          ? AppCategories.expenseCategories.first.name
-          : AppCategories.incomeCategories.first.name;
+      _selectedCategory = ''; // Will reset to first available of new type in build
     });
   }
 
@@ -145,6 +144,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           category: _selectedCategory,
           date: _selectedDate,
           note: note,
+          recurrence: _recurrence,
         );
         await appState.updateTransaction(updated);
       } else {
@@ -158,6 +158,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           date: _selectedDate,
           note: note,
           createdAt: DateTime.now(),
+          recurrence: _recurrence,
         );
         await appState.addTransaction(newTx);
       }
@@ -192,8 +193,16 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
     final currencySymbol = appState.currencySymbol;
 
     final categories = _type == TransactionType.expense
-        ? AppCategories.expenseCategories
-        : AppCategories.incomeCategories;
+        ? appState.expenseCategories
+        : appState.incomeCategories;
+
+    // Ensure _selectedCategory points to a valid category
+    if (_selectedCategory.isEmpty ||
+        !categories.any((c) => c.name.toLowerCase() == _selectedCategory.toLowerCase())) {
+      if (categories.isNotEmpty) {
+        _selectedCategory = categories.first.name;
+      }
+    }
 
     final themeColor = _type == TransactionType.income
         ? AppColors.income
@@ -431,23 +440,48 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                 const SizedBox(height: 20),
 
                 // Category Selection
-                Text(
-                  'CATEGORY',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.1,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'CATEGORY',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ManageCategoriesScreen(
+                              initialType: _type,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text(
+                        'New / Manage',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: categories.map((cat) {
-                    final isSelected = _selectedCategory == cat.name;
+                    final isSelected = _selectedCategory.toLowerCase() == cat.name.toLowerCase();
                     return GestureDetector(
                       onTap: () {
                         setState(() {
@@ -504,6 +538,41 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                           ],
                         ),
                       ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // Recurrence Frequency Selector
+                Text(
+                  'FREQUENCY / RECURRENCE',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: RecurrenceFrequency.values.map((freq) {
+                    final isSelected = _recurrence == freq;
+                    return ChoiceChip(
+                      avatar: isSelected
+                          ? const Icon(Icons.check_rounded, size: 14)
+                          : null,
+                      label: Text(freq.displayName),
+                      selected: isSelected,
+                      selectedColor: AppColors.accent.withValues(alpha: 0.2),
+                      onSelected: (val) {
+                        if (val) {
+                          setState(() => _recurrence = freq);
+                        }
+                      },
                     );
                   }).toList(),
                 ),

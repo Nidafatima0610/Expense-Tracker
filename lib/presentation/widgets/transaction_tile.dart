@@ -4,6 +4,7 @@ import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/transaction_model.dart';
 import 'category_icon_widget.dart';
+import 'transaction_details_sheet.dart';
 
 class TransactionTile extends StatelessWidget {
   final TransactionModel transaction;
@@ -27,7 +28,7 @@ class TransactionTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: onTap ?? () => TransactionDetailsSheet.show(context, transaction),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -100,6 +101,14 @@ class TransactionTile extends StatelessWidget {
                                 : AppColors.lightTextMuted,
                           ),
                         ),
+                        if (transaction.isRecurring) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.repeat_rounded,
+                            size: 13,
+                            color: AppColors.accent,
+                          ),
+                        ],
                       ],
                     ),
                     if (transaction.note != null &&

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/preferences_service.dart';
 import '../../../providers/app_state_scope.dart';
+import '../budgets/budgets_screen.dart';
+import '../categories/manage_categories_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -285,7 +287,83 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Section 2: Data Management
+            // Section 2: Financial Management
+            Text(
+              'FINANCIAL MANAGEMENT',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.1,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.category_rounded,
+                        color: AppColors.accent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Manage Categories',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('${appState.categories.length} categories configured'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ManageCategoriesScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.track_changes_rounded,
+                        color: AppColors.warning,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Monthly Budgets',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('${appState.budgets.length} budget limits active'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const BudgetsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Section 3: Data Management
             Text(
               'DATA MANAGEMENT',
               style: TextStyle(

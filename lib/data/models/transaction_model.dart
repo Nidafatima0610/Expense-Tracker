@@ -19,6 +19,39 @@ enum TransactionType {
   }
 }
 
+enum RecurrenceFrequency {
+  none,
+  daily,
+  weekly,
+  monthly,
+  yearly;
+
+  String get displayName {
+    switch (this) {
+      case RecurrenceFrequency.none:
+        return 'One-time';
+      case RecurrenceFrequency.daily:
+        return 'Daily';
+      case RecurrenceFrequency.weekly:
+        return 'Weekly';
+      case RecurrenceFrequency.monthly:
+        return 'Monthly';
+      case RecurrenceFrequency.yearly:
+        return 'Yearly';
+    }
+  }
+
+  static RecurrenceFrequency fromString(String? value) {
+    if (value == null) return RecurrenceFrequency.none;
+    for (final frequency in RecurrenceFrequency.values) {
+      if (frequency.name.toLowerCase() == value.toLowerCase()) {
+        return frequency;
+      }
+    }
+    return RecurrenceFrequency.none;
+  }
+}
+
 class TransactionModel {
   final String id;
   final String title;
@@ -28,6 +61,7 @@ class TransactionModel {
   final DateTime date;
   final String? note;
   final DateTime createdAt;
+  final RecurrenceFrequency recurrence;
 
   const TransactionModel({
     required this.id,
@@ -38,10 +72,12 @@ class TransactionModel {
     required this.date,
     this.note,
     required this.createdAt,
+    this.recurrence = RecurrenceFrequency.none,
   });
 
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
+  bool get isRecurring => recurrence != RecurrenceFrequency.none;
 
   TransactionModel copyWith({
     String? id,
@@ -52,6 +88,7 @@ class TransactionModel {
     DateTime? date,
     String? note,
     DateTime? createdAt,
+    RecurrenceFrequency? recurrence,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -62,6 +99,7 @@ class TransactionModel {
       date: date ?? this.date,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
+      recurrence: recurrence ?? this.recurrence,
     );
   }
 
@@ -75,6 +113,7 @@ class TransactionModel {
       'date': date.toIso8601String(),
       'note': note,
       'createdAt': createdAt.toIso8601String(),
+      'recurrence': recurrence.name,
     };
   }
 
@@ -90,6 +129,7 @@ class TransactionModel {
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
+      recurrence: RecurrenceFrequency.fromString(json['recurrence'] as String?),
     );
   }
 
