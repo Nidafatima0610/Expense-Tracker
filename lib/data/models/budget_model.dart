@@ -5,6 +5,7 @@ class BudgetModel {
   final int month; // 1 - 12
   final int year; // e.g. 2026
   final String? note;
+  final bool isEnabled;
   final DateTime createdAt;
 
   const BudgetModel({
@@ -14,6 +15,7 @@ class BudgetModel {
     required this.month,
     required this.year,
     this.note,
+    this.isEnabled = true,
     required this.createdAt,
   });
 
@@ -26,6 +28,7 @@ class BudgetModel {
     int? month,
     int? year,
     String? note,
+    bool? isEnabled,
     DateTime? createdAt,
   }) {
     return BudgetModel(
@@ -35,6 +38,7 @@ class BudgetModel {
       month: month ?? this.month,
       year: year ?? this.year,
       note: note ?? this.note,
+      isEnabled: isEnabled ?? this.isEnabled,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -47,6 +51,7 @@ class BudgetModel {
       'month': month,
       'year': year,
       'note': note,
+      'isEnabled': isEnabled,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -59,6 +64,7 @@ class BudgetModel {
       month: json['month'] as int,
       year: json['year'] as int,
       note: json['note'] as String?,
+      isEnabled: json['isEnabled'] as bool? ?? true,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),

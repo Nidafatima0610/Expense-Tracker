@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:expense_tracker/data/models/transaction_model.dart';
 import 'package:expense_tracker/data/repositories/budget_repository.dart';
 import 'package:expense_tracker/data/repositories/category_repository.dart';
+import 'package:expense_tracker/data/repositories/recurring_transaction_repository.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository.dart';
 import 'package:expense_tracker/data/services/preferences_service.dart';
 import 'package:expense_tracker/providers/app_state.dart';
@@ -20,11 +21,13 @@ void main() {
     final repo = TransactionRepository(prefs);
     final catRepo = CategoryRepository(prefs);
     final budgetRepo = BudgetRepository(prefs);
+    final recRepo = RecurringTransactionRepository(prefs);
     final appState = AppState(
       repository: repo,
       preferencesService: prefService,
       categoryRepository: catRepo,
       budgetRepository: budgetRepo,
+      recurringTransactionRepository: recRepo,
     );
     await appState.isReady;
 
@@ -50,11 +53,13 @@ void main() {
     final repo = TransactionRepository(prefs);
     final catRepo = CategoryRepository(prefs);
     final budgetRepo = BudgetRepository(prefs);
+    final recRepo = RecurringTransactionRepository(prefs);
     final appState = AppState(
       repository: repo,
       preferencesService: prefService,
       categoryRepository: catRepo,
       budgetRepository: budgetRepo,
+      recurringTransactionRepository: recRepo,
     );
     await appState.isReady;
 

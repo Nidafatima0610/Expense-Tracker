@@ -10,7 +10,7 @@ class CategoryRepository {
 
   CategoryRepository(this._prefs);
 
-  List<CategoryModel> getDefaultCategories() {
+  static List<CategoryModel> getDefaultCategories() {
     final now = DateTime(2026, 1, 1);
 
     return [

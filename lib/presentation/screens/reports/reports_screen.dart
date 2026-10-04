@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
@@ -133,6 +134,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final totalBreakdownAmount =
         breakdown.fold<double>(0.0, (sum, b) => sum + b.amount);
 
+    final int targetYear;
+    final int targetMonth;
+    if (_period == ReportPeriod.lastMonth) {
+      final now = DateTime.now();
+      targetYear = now.month == 1 ? now.year - 1 : now.year;
+      targetMonth = now.month == 1 ? 12 : now.month - 1;
+    } else if (_period == ReportPeriod.customRange) {
+      targetYear = range.start.year;
+      targetMonth = range.start.month;
+    } else {
+      final now = DateTime.now();
+      targetYear = now.year;
+      targetMonth = now.month;
+    }
+    final comparison = appState.getMonthOverMonthComparison(targetYear, targetMonth);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Financial Reports'),
@@ -168,6 +185,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 netBalance: netBalance,
                 avgDaily: avgDailyExpense,
                 txCount: totalTxCount,
+                currencySymbol: currencySymbol,
+              ),
+              const SizedBox(height: 22),
+
+              // 3. Month-to-Month Comparison
+              _buildMonthOverMonthSection(
+                context: context,
+                isDark: isDark,
+                comparison: comparison,
                 currencySymbol: currencySymbol,
               ),
               const SizedBox(height: 22),
@@ -1206,5 +1232,295 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
     }
     return AppColors.accent;
+  }
+
+  Widget _buildMonthOverMonthSection({
+    required BuildContext context,
+    required bool isDark,
+    required MonthOverMonthComparison comparison,
+    required String currencySymbol,
+  }) {
+    final currentMonthLabel = DateFormat('MMMM y').format(DateTime(comparison.currentYear, comparison.currentMonth));
+    final prevMonthLabel = DateFormat('MMMM y').format(DateTime(comparison.previousYear, comparison.previousMonth));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'MONTH-OVER-MONTH COMPARISON',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$currentMonthLabel vs. $prevMonthLabel',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.compare_arrows_rounded, size: 14, color: AppColors.accent),
+                      SizedBox(width: 4),
+                      Text(
+                        'MoM Shift',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!comparison.hasPreviousData) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurfaceSecondary : AppColors.lightSurfaceSecondary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 20,
+                      color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'No transactions recorded for $prevMonthLabel. Month-to-month percentage changes will calculate automatically as past records accumulate.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              _buildMoMRow(
+                isDark: isDark,
+                title: 'Income',
+                currentAmount: comparison.currentIncome,
+                previousAmount: comparison.previousIncome,
+                change: comparison.incomeChange,
+                percentChange: comparison.incomePercentChange,
+                currencySymbol: currencySymbol,
+                isPositiveGood: true,
+              ),
+              const SizedBox(height: 12),
+              Divider(color: isDark ? AppColors.darkBorder : AppColors.lightBorder, height: 1),
+              const SizedBox(height: 12),
+              _buildMoMRow(
+                isDark: isDark,
+                title: 'Expenses',
+                currentAmount: comparison.currentExpense,
+                previousAmount: comparison.previousExpense,
+                change: comparison.expenseChange,
+                percentChange: comparison.expensePercentChange,
+                currencySymbol: currencySymbol,
+                isPositiveGood: false,
+              ),
+              const SizedBox(height: 12),
+              Divider(color: isDark ? AppColors.darkBorder : AppColors.lightBorder, height: 1),
+              const SizedBox(height: 12),
+              _buildMoMRow(
+                isDark: isDark,
+                title: 'Net Savings',
+                currentAmount: comparison.currentBalance,
+                previousAmount: comparison.previousBalance,
+                change: comparison.balanceChange,
+                percentChange: comparison.balancePercentChange,
+                currencySymbol: currencySymbol,
+                isPositiveGood: true,
+              ),
+              const SizedBox(height: 14),
+              _buildMoMHighlightCallout(comparison, prevMonthLabel, isDark),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoMRow({
+    required bool isDark,
+    required String title,
+    required double currentAmount,
+    required double previousAmount,
+    required double change,
+    required double? percentChange,
+    required String currencySymbol,
+    required bool isPositiveGood,
+  }) {
+    final bool isUp = change > 0;
+    final bool isZero = change == 0;
+
+    final Color badgeColor;
+    if (isZero) {
+      badgeColor = Colors.grey;
+    } else if (isPositiveGood) {
+      badgeColor = isUp ? AppColors.income : AppColors.expense;
+    } else {
+      badgeColor = isUp ? AppColors.expense : AppColors.income;
+    }
+
+    final String percentText = percentChange != null
+        ? '${percentChange >= 0 ? '+' : ''}${percentChange.toStringAsFixed(1)}%'
+        : 'New';
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 4,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Prev: ${CurrencyFormatter.format(previousAmount, symbol: currencySymbol)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 4,
+          child: Text(
+            CurrencyFormatter.format(currentAmount, symbol: currencySymbol),
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: badgeColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isZero)
+                Icon(
+                  isUp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  size: 12,
+                  color: badgeColor,
+                ),
+              const SizedBox(width: 2),
+              Text(
+                percentText,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: badgeColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMoMHighlightCallout(
+    MonthOverMonthComparison comp,
+    String prevMonthLabel,
+    bool isDark,
+  ) {
+    final String text;
+    final IconData icon;
+    final Color color;
+
+    if (comp.expensePercentChange != null && comp.expensePercentChange! > 0) {
+      text = 'Your spending increased by ${comp.expensePercentChange!.toStringAsFixed(1)}% compared with $prevMonthLabel.';
+      icon = Icons.warning_amber_rounded;
+      color = AppColors.expense;
+    } else if (comp.expensePercentChange != null && comp.expensePercentChange! < 0) {
+      text = 'Your spending decreased by ${comp.expensePercentChange!.abs().toStringAsFixed(1)}% compared with $prevMonthLabel. Great job keeping expenses down!';
+      icon = Icons.thumb_up_alt_rounded;
+      color = AppColors.income;
+    } else if (comp.incomePercentChange != null && comp.incomePercentChange! > 0) {
+      text = 'Your income grew by ${comp.incomePercentChange!.toStringAsFixed(1)}% compared with $prevMonthLabel.';
+      icon = Icons.trending_up_rounded;
+      color = AppColors.income;
+    } else {
+      text = 'Spending and income are steady compared to $prevMonthLabel.';
+      icon = Icons.insights_rounded;
+      color = AppColors.accent;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -107,4 +107,8 @@ class BudgetRepository {
     current.removeWhere((b) => b.id == id);
     await saveBudgets(current);
   }
+
+  Future<void> clearAll() async {
+    await _prefs.remove(_storageKey);
+  }
 }

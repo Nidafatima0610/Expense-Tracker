@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
@@ -22,6 +25,46 @@ class TransactionDetailsSheet extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => TransactionDetailsSheet(transaction: transaction),
     );
+  }
+
+  void _handleShare(BuildContext context) async {
+    final appState = AppStateScope.of(context);
+    final isIncome = transaction.isIncome;
+    final dateStr = DateFormat('MMMM d, yyyy').format(transaction.date);
+    final amountStr = CurrencyFormatter.format(transaction.amount, symbol: appState.currencySymbol);
+
+    final summary = StringBuffer();
+    summary.writeln('${isIncome ? 'Income' : 'Expense'} Details:');
+    summary.writeln('• Title: ${transaction.title}');
+    summary.writeln('• Type: ${transaction.type.displayName}');
+    summary.writeln('• Category: ${transaction.category}');
+    summary.writeln('• Amount: $amountStr');
+    summary.writeln('• Date: $dateStr');
+    if (transaction.isRecurring) {
+      summary.writeln('• Recurrence: ${transaction.recurrence.displayName}');
+    }
+    if (transaction.note != null && transaction.note!.trim().isNotEmpty) {
+      summary.writeln('• Note: ${transaction.note}');
+    }
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: summary.toString(),
+          subject: '${transaction.title} Details',
+        ),
+      );
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: summary.toString()));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaction details copied to clipboard!'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _handleDelete(BuildContext context) async {
@@ -269,9 +312,25 @@ class TransactionDetailsSheet extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Action Buttons: Edit, Duplicate, Delete
+          // Action Buttons: Share, Duplicate, Edit, Delete
           Row(
             children: [
+              // Share Button
+              IconButton(
+                onPressed: () => _handleShare(context),
+                icon: const Icon(Icons.share_rounded),
+                color: AppColors.accent,
+                tooltip: 'Share Details',
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.accent.withValues(alpha: 0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(width: 8),
+
               // Duplicate Button
               Expanded(
                 child: OutlinedButton.icon(
@@ -286,7 +345,7 @@ class TransactionDetailsSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
 
               // Edit Button
               Expanded(
@@ -305,7 +364,7 @@ class TransactionDetailsSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
 
               // Delete Button
               IconButton(

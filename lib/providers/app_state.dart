@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../data/models/budget_model.dart';
 import '../data/models/category_model.dart';
+import '../data/models/recurring_transaction_model.dart';
 import '../data/models/transaction_model.dart';
 import '../data/repositories/budget_repository.dart';
 import '../data/repositories/category_repository.dart';
+import '../data/repositories/recurring_transaction_repository.dart';
 import '../data/repositories/transaction_repository.dart';
+import '../data/services/data_export_service.dart';
 import '../data/services/preferences_service.dart';
 
 enum TransactionDateFilter {
@@ -89,12 +93,64 @@ class BudgetWarning {
   }
 }
 
+class MonthOverMonthComparison {
+  final int currentYear;
+  final int currentMonth;
+  final int previousYear;
+  final int previousMonth;
+
+  final double currentIncome;
+  final double previousIncome;
+  final double incomeChange;
+  final double? incomePercentChange;
+
+  final double currentExpense;
+  final double previousExpense;
+  final double expenseChange;
+  final double? expensePercentChange;
+
+  final double currentBalance;
+  final double previousBalance;
+  final double balanceChange;
+  final double? balancePercentChange;
+
+  final bool hasPreviousData;
+
+  const MonthOverMonthComparison({
+    required this.currentYear,
+    required this.currentMonth,
+    required this.previousYear,
+    required this.previousMonth,
+    required this.currentIncome,
+    required this.previousIncome,
+    required this.incomeChange,
+    this.incomePercentChange,
+    required this.currentExpense,
+    required this.previousExpense,
+    required this.expenseChange,
+    this.expensePercentChange,
+    required this.currentBalance,
+    required this.previousBalance,
+    required this.balanceChange,
+    this.balancePercentChange,
+    required this.hasPreviousData,
+  });
+}
+
 class FinancialInsights {
   final String? topCategory;
   final double topCategoryAmount;
   final double topCategoryPercentage;
+  final String? lowestCategory;
+  final double lowestCategoryAmount;
   final TransactionModel? largestExpense;
   final double averageExpense;
+  final double averageDailySpending;
+  final double averageTransactionAmount;
+  final int totalTransactions;
+  final double incomeExpenseRatio;
+  final DateTime? peakSpendingDay;
+  final double peakSpendingAmount;
   final double? monthOverMonthPercentChange;
   final bool hasPreviousMonthData;
   final List<String> insightMessages;
@@ -103,8 +159,16 @@ class FinancialInsights {
     this.topCategory,
     this.topCategoryAmount = 0.0,
     this.topCategoryPercentage = 0.0,
+    this.lowestCategory,
+    this.lowestCategoryAmount = 0.0,
     this.largestExpense,
     this.averageExpense = 0.0,
+    this.averageDailySpending = 0.0,
+    this.averageTransactionAmount = 0.0,
+    this.totalTransactions = 0,
+    this.incomeExpenseRatio = 0.0,
+    this.peakSpendingDay,
+    this.peakSpendingAmount = 0.0,
     this.monthOverMonthPercentChange,
     this.hasPreviousMonthData = false,
     this.insightMessages = const [],
@@ -116,10 +180,12 @@ class AppState extends ChangeNotifier {
   final PreferencesService preferencesService;
   final CategoryRepository categoryRepository;
   final BudgetRepository budgetRepository;
+  final RecurringTransactionRepository recurringTransactionRepository;
 
   List<TransactionModel> _transactions = [];
   List<CategoryModel> _categories = [];
   List<BudgetModel> _budgets = [];
+  List<RecurringTransactionModel> _recurringTransactions = [];
   bool _isLoading = true;
 
   // Dashboard Month selection
@@ -151,6 +217,7 @@ class AppState extends ChangeNotifier {
     required this.preferencesService,
     required this.categoryRepository,
     required this.budgetRepository,
+    required this.recurringTransactionRepository,
   }) {
     _themeMode = preferencesService.getThemeMode();
     _currencySymbol = preferencesService.getCurrencySymbol();
@@ -163,6 +230,8 @@ class AppState extends ChangeNotifier {
   List<TransactionModel> get transactions => List.unmodifiable(_transactions);
   List<CategoryModel> get categories => List.unmodifiable(_categories);
   List<BudgetModel> get budgets => List.unmodifiable(_budgets);
+  List<RecurringTransactionModel> get recurringTransactions =>
+      List.unmodifiable(_recurringTransactions);
   ThemeMode get themeMode => _themeMode;
   String get currencySymbol => _currencySymbol;
   String get currencyCode => _currencyCode;
@@ -194,16 +263,25 @@ class AppState extends ChangeNotifier {
     _transactions = await repository.getTransactions();
     _categories = await categoryRepository.getCategories();
     _budgets = await budgetRepository.getBudgets();
+    _recurringTransactions =
+        await recurringTransactionRepository.getRecurringTransactions();
 
     // If first time opening app and has never seeded, seed sample transactions
     if (_transactions.isEmpty && !preferencesService.getHasSeeded()) {
       final sample = repository.generateSampleTransactions();
       await repository.saveTransactions(sample);
+      final sampleRec =
+          recurringTransactionRepository.generateSampleRecurringTransactions();
+      await recurringTransactionRepository.saveRecurringTransactions(sampleRec);
       await preferencesService.setHasSeeded(true);
       _transactions = sample;
+      _recurringTransactions = sampleRec;
     }
 
     _sortTransactions();
+    // Check and generate any due recurring occurrences upon app startup
+    await _generateDueRecurringTransactionsInternal();
+
     _isLoading = false;
     notifyListeners();
   }
@@ -522,14 +600,14 @@ class AppState extends ChangeNotifier {
     return _budgets.where((b) => b.year == year && b.month == month).toList();
   }
 
-  double getSpentForBudget(BudgetModel budget) {
+  List<TransactionModel> getTransactionsForBudget(BudgetModel budget) {
     if (budget.isOverall) {
       return _transactions
           .where((t) =>
               t.isExpense &&
               t.date.year == budget.year &&
               t.date.month == budget.month)
-          .fold(0.0, (sum, t) => sum + t.amount);
+          .toList();
     }
 
     return _transactions
@@ -538,6 +616,11 @@ class AppState extends ChangeNotifier {
             t.date.year == budget.year &&
             t.date.month == budget.month &&
             t.category.toLowerCase() == budget.category.toLowerCase())
+        .toList();
+  }
+
+  double getSpentForBudget(BudgetModel budget) {
+    return getTransactionsForBudget(budget)
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
@@ -553,7 +636,7 @@ class AppState extends ChangeNotifier {
   }
 
   List<BudgetWarning> getBudgetWarningsForMonth(int year, int month) {
-    final monthBudgets = getBudgetsForMonth(year, month);
+    final monthBudgets = getBudgetsForMonth(year, month).where((b) => b.isEnabled).toList();
     final List<BudgetWarning> warnings = [];
 
     for (final b in monthBudgets) {
@@ -589,6 +672,14 @@ class AppState extends ChangeNotifier {
     await budgetRepository.updateBudget(budget);
     _budgets = await budgetRepository.getBudgets();
     notifyListeners();
+  }
+
+  Future<void> toggleBudgetEnabled(String id) async {
+    final index = _budgets.indexWhere((b) => b.id == id);
+    if (index != -1) {
+      final updated = _budgets[index].copyWith(isEnabled: !_budgets[index].isEnabled);
+      await updateBudget(updated);
+    }
   }
 
   Future<void> deleteBudget(String id) async {
@@ -646,6 +737,182 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  // --- Recurring Transactions ---
+
+  Future<void> addRecurringTransaction(RecurringTransactionModel recurring) async {
+    await recurringTransactionRepository.addRecurringTransaction(recurring);
+    _recurringTransactions =
+        await recurringTransactionRepository.getRecurringTransactions();
+    await _generateDueRecurringTransactionsInternal();
+    notifyListeners();
+  }
+
+  Future<void> updateRecurringTransaction(RecurringTransactionModel recurring) async {
+    await recurringTransactionRepository.updateRecurringTransaction(recurring);
+    _recurringTransactions =
+        await recurringTransactionRepository.getRecurringTransactions();
+    await _generateDueRecurringTransactionsInternal();
+    notifyListeners();
+  }
+
+  Future<void> deleteRecurringTransaction(String id) async {
+    await recurringTransactionRepository.deleteRecurringTransaction(id);
+    _recurringTransactions.removeWhere((r) => r.id == id);
+    notifyListeners();
+  }
+
+  Future<void> toggleRecurringTransactionStatus(String id) async {
+    final index = _recurringTransactions.indexWhere((r) => r.id == id);
+    if (index != -1) {
+      final updated = _recurringTransactions[index].copyWith(
+        isActive: !_recurringTransactions[index].isActive,
+      );
+      await updateRecurringTransaction(updated);
+    }
+  }
+
+  Future<int> generateDueRecurringTransactions({DateTime? upTo}) async {
+    return await _generateDueRecurringTransactionsInternal(upTo: upTo);
+  }
+
+  Future<int> _generateDueRecurringTransactionsInternal({DateTime? upTo}) async {
+    final now = upTo ?? DateTime.now();
+    int generatedCount = 0;
+    final List<TransactionModel> newTransactions = [];
+    final List<RecurringTransactionModel> updatedRules = [];
+
+    for (final rule in _recurringTransactions) {
+      if (!rule.isActive) {
+        updatedRules.add(rule);
+        continue;
+      }
+
+      final dueDates = rule.getDueOccurrences(now);
+      if (dueDates.isEmpty) {
+        updatedRules.add(rule);
+        continue;
+      }
+
+      for (final dueDate in dueDates) {
+        final tx = TransactionModel(
+          id: const Uuid().v4(),
+          title: rule.title,
+          amount: rule.amount,
+          type: rule.type,
+          category: rule.category,
+          date: dueDate,
+          note: rule.note != null && rule.note!.isNotEmpty
+              ? '${rule.note} (Recurring)'
+              : 'Recurring ${rule.frequency.displayName}',
+          createdAt: DateTime.now(),
+          recurrence: rule.frequency,
+        );
+        newTransactions.add(tx);
+        generatedCount++;
+      }
+
+      final latestDueDate = dueDates.last;
+      updatedRules.add(rule.copyWith(lastGeneratedDate: latestDueDate));
+    }
+
+    if (newTransactions.isNotEmpty) {
+      _transactions.insertAll(0, newTransactions);
+      _sortTransactions();
+      await repository.saveTransactions(_transactions);
+      _recurringTransactions = updatedRules;
+      await recurringTransactionRepository.saveRecurringTransactions(_recurringTransactions);
+      notifyListeners();
+    } else if (updatedRules.isNotEmpty && updatedRules != _recurringTransactions) {
+      _recurringTransactions = updatedRules;
+      await recurringTransactionRepository.saveRecurringTransactions(_recurringTransactions);
+      notifyListeners();
+    }
+
+    return generatedCount;
+  }
+
+  // --- Duplicate Detection Helper ---
+
+  bool hasDuplicateTransaction({
+    required String title,
+    required double amount,
+    required DateTime date,
+    required String category,
+    String? excludeId,
+  }) {
+    return _transactions.any((t) =>
+        t.id != excludeId &&
+        t.title.trim().toLowerCase() == title.trim().toLowerCase() &&
+        (t.amount - amount).abs() < 0.001 &&
+        t.category.trim().toLowerCase() == category.trim().toLowerCase() &&
+        t.date.year == date.year &&
+        t.date.month == date.month &&
+        t.date.day == date.day);
+  }
+
+  // --- Month-over-Month Comparison ---
+
+  MonthOverMonthComparison getMonthOverMonthComparison(int year, int month) {
+    final currentTx = _transactions
+        .where((t) => t.date.year == year && t.date.month == month)
+        .toList();
+
+    final prevMonth = month == 1 ? 12 : month - 1;
+    final prevYear = month == 1 ? year - 1 : year;
+    final prevTx = _transactions
+        .where((t) => t.date.year == prevYear && t.date.month == prevMonth)
+        .toList();
+
+    final currentIncome =
+        currentTx.where((t) => t.isIncome).fold(0.0, (s, t) => s + t.amount);
+    final currentExpense =
+        currentTx.where((t) => t.isExpense).fold(0.0, (s, t) => s + t.amount);
+    final currentBalance = currentIncome - currentExpense;
+
+    final prevIncome =
+        prevTx.where((t) => t.isIncome).fold(0.0, (s, t) => s + t.amount);
+    final prevExpense =
+        prevTx.where((t) => t.isExpense).fold(0.0, (s, t) => s + t.amount);
+    final prevBalance = prevIncome - prevExpense;
+
+    final hasPrev = prevTx.isNotEmpty;
+
+    final incomeChange = currentIncome - prevIncome;
+    final incomePct = (hasPrev && prevIncome > 0)
+        ? ((currentIncome - prevIncome) / prevIncome) * 100
+        : null;
+
+    final expenseChange = currentExpense - prevExpense;
+    final expensePct = (hasPrev && prevExpense > 0)
+        ? ((currentExpense - prevExpense) / prevExpense) * 100
+        : null;
+
+    final balanceChange = currentBalance - prevBalance;
+    final balancePct = (hasPrev && prevBalance.abs() > 0)
+        ? ((currentBalance - prevBalance) / prevBalance.abs()) * 100
+        : null;
+
+    return MonthOverMonthComparison(
+      currentYear: year,
+      currentMonth: month,
+      previousYear: prevYear,
+      previousMonth: prevMonth,
+      currentIncome: currentIncome,
+      previousIncome: prevIncome,
+      incomeChange: incomeChange,
+      incomePercentChange: incomePct,
+      currentExpense: currentExpense,
+      previousExpense: prevExpense,
+      expenseChange: expenseChange,
+      expensePercentChange: expensePct,
+      currentBalance: currentBalance,
+      previousBalance: prevBalance,
+      balanceChange: balanceChange,
+      balancePercentChange: balancePct,
+      hasPreviousData: hasPrev,
+    );
+  }
+
   // --- Financial Insights Engine ---
 
   FinancialInsights getFinancialInsights(int year, int month) {
@@ -654,8 +921,11 @@ class AppState extends ChangeNotifier {
         .toList();
 
     final monthExpenses = monthTx.where((t) => t.isExpense).toList();
+    final monthIncomes = monthTx.where((t) => t.isIncome).toList();
     final double totalMonthExpense =
         monthExpenses.fold(0.0, (sum, t) => sum + t.amount);
+    final double totalMonthIncome =
+        monthIncomes.fold(0.0, (sum, t) => sum + t.amount);
 
     final breakdown = getCategoryBreakdown(
       type: TransactionType.expense,
@@ -666,11 +936,18 @@ class AppState extends ChangeNotifier {
     String? topCat;
     double topCatAmount = 0.0;
     double topCatPercentage = 0.0;
+    String? lowestCat;
+    double lowestCatAmount = 0.0;
 
     if (breakdown.isNotEmpty) {
       topCat = breakdown.first.category;
       topCatAmount = breakdown.first.amount;
       topCatPercentage = breakdown.first.percentage;
+
+      if (breakdown.length >= 2) {
+        lowestCat = breakdown.last.category;
+        lowestCatAmount = breakdown.last.amount;
+      }
     }
 
     TransactionModel? largest;
@@ -681,6 +958,43 @@ class AppState extends ChangeNotifier {
     final double avgExpense = monthExpenses.isNotEmpty
         ? totalMonthExpense / monthExpenses.length
         : 0.0;
+
+    final double avgTx = monthTx.isNotEmpty
+        ? (totalMonthExpense + totalMonthIncome) / monthTx.length
+        : 0.0;
+
+    // Calculate days passed in month for average daily spending
+    final now = DateTime.now();
+    final int daysInMonth = DateTime(year, month + 1, 0).day;
+    final int daysPassed = (now.year == year && now.month == month)
+        ? now.day.clamp(1, daysInMonth)
+        : daysInMonth;
+
+    final double avgDailySpending =
+        daysPassed > 0 ? totalMonthExpense / daysPassed : 0.0;
+
+    final double incomeExpenseRatio =
+        totalMonthIncome > 0 ? (totalMonthExpense / totalMonthIncome) * 100 : 0.0;
+
+    // Find peak spending day
+    DateTime? peakDay;
+    double peakAmount = 0.0;
+    if (monthExpenses.isNotEmpty) {
+      final Map<int, double> dailyTotals = {};
+      for (final tx in monthExpenses) {
+        dailyTotals[tx.date.day] = (dailyTotals[tx.date.day] ?? 0.0) + tx.amount;
+      }
+      int maxDay = monthExpenses.first.date.day;
+      double maxSpent = 0.0;
+      dailyTotals.forEach((d, amt) {
+        if (amt > maxSpent) {
+          maxSpent = amt;
+          maxDay = d;
+        }
+      });
+      peakDay = DateTime(year, month, maxDay);
+      peakAmount = maxSpent;
+    }
 
     // Previous month comparison
     final prevMonth = month == 1 ? 12 : month - 1;
@@ -707,6 +1021,12 @@ class AppState extends ChangeNotifier {
       );
     }
 
+    if (lowestCat != null && lowestCat != topCat && lowestCatAmount > 0) {
+      messages.add(
+        '$lowestCat had your lowest spending ($_currencySymbol${lowestCatAmount.toStringAsFixed(0)}).',
+      );
+    }
+
     if (hasPrev && momPercentChange != null) {
       final isUp = momPercentChange > 0;
       final absChange = momPercentChange.abs().toStringAsFixed(0);
@@ -721,9 +1041,35 @@ class AppState extends ChangeNotifier {
       );
     }
 
+    if (peakDay != null && peakAmount > 0) {
+      final dayName = DateFormat('EEEE, MMM d').format(peakDay);
+      messages.add(
+        'Peak spending occurred on $dayName ($_currencySymbol${peakAmount.toStringAsFixed(0)}).',
+      );
+    }
+
+    if (avgDailySpending > 0) {
+      messages.add(
+        'Average daily spending is $_currencySymbol${avgDailySpending.toStringAsFixed(0)} across $daysPassed days.',
+      );
+    }
+
+    if (totalMonthIncome > 0 && totalMonthExpense > 0) {
+      if (totalMonthIncome >= totalMonthExpense) {
+        final savingsRate = 100 - incomeExpenseRatio;
+        messages.add(
+          'Your savings rate is ${savingsRate.toStringAsFixed(0)}% of income this month.',
+        );
+      } else {
+        messages.add(
+          'Expenses exceeded monthly income by ${(incomeExpenseRatio - 100).toStringAsFixed(0)}%.',
+        );
+      }
+    }
+
     final monthBudgets = getBudgetsForMonth(year, month);
     final overallBudget = monthBudgets.firstWhere(
-      (b) => b.isOverall,
+      (b) => b.isOverall && b.isEnabled,
       orElse: () => BudgetModel(
         id: '',
         category: '',
@@ -751,8 +1097,16 @@ class AppState extends ChangeNotifier {
       topCategory: topCat,
       topCategoryAmount: topCatAmount,
       topCategoryPercentage: topCatPercentage,
+      lowestCategory: lowestCat,
+      lowestCategoryAmount: lowestCatAmount,
       largestExpense: largest,
       averageExpense: avgExpense,
+      averageDailySpending: avgDailySpending,
+      averageTransactionAmount: avgTx,
+      totalTransactions: monthTx.length,
+      incomeExpenseRatio: incomeExpenseRatio,
+      peakSpendingDay: peakDay,
+      peakSpendingAmount: peakAmount,
       monthOverMonthPercentChange: momPercentChange,
       hasPreviousMonthData: hasPrev,
       insightMessages: messages,
@@ -810,6 +1164,113 @@ class AppState extends ChangeNotifier {
     _transactions.clear();
     notifyListeners();
     await repository.clearAllTransactions();
+  }
+
+  Future<void> clearAllFinancialData() async {
+    await isReady;
+    _transactions.clear();
+    _budgets.clear();
+    _recurringTransactions.clear();
+    await repository.clearAllTransactions();
+    await budgetRepository.clearAll();
+    await recurringTransactionRepository.clearAll();
+    _categories = CategoryRepository.getDefaultCategories();
+    await categoryRepository.saveCategories(_categories);
+    notifyListeners();
+  }
+
+  Future<RestoreResult> restoreBackup(String jsonString, RestoreMode mode) async {
+    await isReady;
+    final validation = DataExportService.parseAndValidateBackup(jsonString);
+    if (!validation.success) {
+      return validation;
+    }
+
+    if (mode == RestoreMode.replace) {
+      if (validation.transactions != null) {
+        _transactions = validation.transactions!;
+        _sortTransactions();
+        await repository.saveTransactions(_transactions);
+      }
+      if (validation.categories != null && validation.categories!.isNotEmpty) {
+        _categories = validation.categories!;
+        await categoryRepository.saveCategories(_categories);
+      }
+      if (validation.budgets != null) {
+        _budgets = validation.budgets!;
+        await budgetRepository.saveBudgets(_budgets);
+      }
+      if (validation.recurringTransactions != null) {
+        _recurringTransactions = validation.recurringTransactions!;
+        await recurringTransactionRepository
+            .saveRecurringTransactions(_recurringTransactions);
+      }
+      if (validation.preferences != null) {
+        final prefs = validation.preferences!;
+        if (prefs['currencySymbol'] is String && prefs['currencyCode'] is String) {
+          final info = CurrencyInfo(
+            symbol: prefs['currencySymbol'] as String,
+            code: prefs['currencyCode'] as String,
+            name: prefs['currencyCode'] as String,
+          );
+          await setCurrency(info);
+        }
+        if (prefs['themeMode'] is String) {
+          final modeStr = prefs['themeMode'] as String;
+          if (modeStr == 'light') await setThemeMode(ThemeMode.light);
+          if (modeStr == 'dark') await setThemeMode(ThemeMode.dark);
+          if (modeStr == 'system') await setThemeMode(ThemeMode.system);
+        }
+      }
+    } else {
+      // Merge mode
+      if (validation.transactions != null) {
+        final existingIds = _transactions.map((t) => t.id).toSet();
+        final toAdd =
+            validation.transactions!.where((t) => !existingIds.contains(t.id));
+        _transactions.addAll(toAdd);
+        _sortTransactions();
+        await repository.saveTransactions(_transactions);
+      }
+      if (validation.categories != null) {
+        final existingNames =
+            _categories.map((c) => c.name.toLowerCase()).toSet();
+        for (final c in validation.categories!) {
+          if (!existingNames.contains(c.name.toLowerCase())) {
+            _categories.add(c);
+          }
+        }
+        await categoryRepository.saveCategories(_categories);
+      }
+      if (validation.budgets != null) {
+        final existingKeys = _budgets
+            .map((b) => '${b.year}-${b.month}-${b.category.toLowerCase()}')
+            .toSet();
+        for (final b in validation.budgets!) {
+          final key = '${b.year}-${b.month}-${b.category.toLowerCase()}';
+          if (!existingKeys.contains(key)) {
+            _budgets.add(b);
+          }
+        }
+        await budgetRepository.saveBudgets(_budgets);
+      }
+      if (validation.recurringTransactions != null) {
+        final existingTitles = _recurringTransactions
+            .map((r) => '${r.title.toLowerCase()}-${r.amount}')
+            .toSet();
+        for (final r in validation.recurringTransactions!) {
+          final key = '${r.title.toLowerCase()}-${r.amount}';
+          if (!existingTitles.contains(key)) {
+            _recurringTransactions.add(r);
+          }
+        }
+        await recurringTransactionRepository
+            .saveRecurringTransactions(_recurringTransactions);
+      }
+    }
+
+    notifyListeners();
+    return validation;
   }
 
   Future<void> loadSampleData() async {

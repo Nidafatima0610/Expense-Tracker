@@ -6,8 +6,10 @@ import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/empty_state_widget.dart';
+import '../../widgets/export_transactions_sheet.dart';
 import '../../widgets/transaction_details_sheet.dart';
 import '../../widgets/transaction_tile.dart';
+import '../calendar/calendar_screen.dart';
 import 'add_edit_transaction_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -335,6 +337,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       appBar: AppBar(
         title: const Text('Transactions'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month_rounded),
+            tooltip: 'Financial Calendar',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CalendarScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: 'Export CSV',
+            onPressed: () => ExportTransactionsSheet.show(context),
+          ),
           IconButton(
             icon: const Icon(Icons.add_rounded),
             tooltip: 'Add Transaction',

@@ -37,6 +37,7 @@ class _MainScreenState extends State<MainScreen> {
     final screens = [
       DashboardScreen(
         onViewAllTransactions: () => _onTabSelected(1),
+        onViewReports: () => _onTabSelected(2),
       ),
       const TransactionsScreen(),
       const ReportsScreen(),

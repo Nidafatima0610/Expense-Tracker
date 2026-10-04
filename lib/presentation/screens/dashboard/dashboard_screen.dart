@@ -7,21 +7,28 @@ import '../../../data/models/category_model.dart';
 import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state.dart';
 import '../../../providers/app_state_scope.dart';
+import '../../widgets/backup_restore_dialogs.dart';
 import '../../widgets/balance_card.dart';
 import '../../widgets/empty_state_widget.dart';
+import '../../widgets/export_transactions_sheet.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/transaction_details_sheet.dart';
 import '../../widgets/transaction_tile.dart';
 import '../budgets/budgets_screen.dart';
+import '../calendar/calendar_screen.dart';
 import '../categories/manage_categories_screen.dart';
+import '../recurring/recurring_transactions_screen.dart';
+import '../reports/reports_screen.dart';
 import '../transactions/add_edit_transaction_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final VoidCallback onViewAllTransactions;
+  final VoidCallback? onViewReports;
 
   const DashboardScreen({
     super.key,
     required this.onViewAllTransactions,
+    this.onViewReports,
   });
 
   String _getGreeting() {
@@ -57,6 +64,34 @@ class DashboardScreen extends StatelessWidget {
         builder: (_) => const ManageCategoriesScreen(),
       ),
     );
+  }
+
+  void _openCalendar(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const CalendarScreen(),
+      ),
+    );
+  }
+
+  void _openRecurring(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const RecurringTransactionsScreen(),
+      ),
+    );
+  }
+
+  void _openReports(BuildContext context) {
+    if (onViewReports != null) {
+      onViewReports!();
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ReportsScreen(),
+        ),
+      );
+    }
   }
 
   Future<void> _selectMonth(BuildContext context, AppState appState) async {
@@ -370,7 +405,65 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
+
+                // Secondary Quick Actions (Reports, Budgets, Calendar, Recurring, Export, Restore)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    children: [
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.bar_chart_rounded,
+                        label: 'Reports',
+                        onTap: () => _openReports(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.track_changes_rounded,
+                        label: 'Budgets',
+                        onTap: () => _openBudgets(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.calendar_month_rounded,
+                        label: 'Calendar',
+                        onTap: () => _openCalendar(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.repeat_rounded,
+                        label: 'Recurring',
+                        onTap: () => _openRecurring(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.file_upload_outlined,
+                        label: 'Export CSV',
+                        onTap: () => ExportTransactionsSheet.show(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.settings_backup_restore_rounded,
+                        label: 'Restore Backup',
+                        onTap: () => BackupRestoreDialogs.showRestoreBackup(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
 
                 // 5. CURRENT / SELECTED MONTH SUMMARY CARD
                 Card(
@@ -577,7 +670,17 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 6. BUDGET WARNINGS BANNER (Goal 4)
+                // 6. BUDGET PROGRESS SECTION
+                _buildBudgetProgressCard(
+                  context: context,
+                  isDark: isDark,
+                  appState: appState,
+                  selectedMonth: selectedMonth,
+                  currencySymbol: currencySymbol,
+                ),
+                const SizedBox(height: 16),
+
+                // 7. BUDGET WARNINGS BANNER (Goal 4)
                 if (budgetWarnings.isNotEmpty) ...[
                   InkWell(
                     onTap: () => _openBudgets(context),
@@ -930,5 +1033,280 @@ class DashboardScreen extends StatelessWidget {
       }
     }
     return AppColors.accent;
+  }
+
+  Widget _buildQuickActionChip({
+    required BuildContext context,
+    required bool isDark,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: AppColors.accent),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppColors.darkTextPrimary
+                        : AppColors.lightTextPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetProgressCard({
+    required BuildContext context,
+    required bool isDark,
+    required AppState appState,
+    required DateTime selectedMonth,
+    required String currencySymbol,
+  }) {
+    final monthBudgets = appState
+        .getBudgetsForMonth(selectedMonth.year, selectedMonth.month)
+        .where((b) => b.isEnabled)
+        .toList();
+
+    final totalBudgeted =
+        monthBudgets.fold<double>(0.0, (sum, b) => sum + b.amount);
+    final totalSpent = monthBudgets.fold<double>(
+        0.0, (sum, b) => sum + appState.getSpentForBudget(b));
+    final usage = totalBudgeted > 0 ? (totalSpent / totalBudgeted) : 0.0;
+    final remaining = totalBudgeted - totalSpent;
+
+    final Color statusColor;
+    final String statusLabel;
+    if (totalBudgeted == 0) {
+      statusColor = Colors.grey;
+      statusLabel = 'Not Set';
+    } else if (usage >= 1.0) {
+      statusColor = AppColors.expense;
+      statusLabel = 'Over Budget';
+    } else if (usage >= 0.8) {
+      statusColor = AppColors.warning;
+      statusLabel = 'Near Limit';
+    } else {
+      statusColor = AppColors.income;
+      statusLabel = 'Healthy';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.track_changes_rounded,
+                        size: 18,
+                        color: statusColor,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'BUDGET PROGRESS',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        Text(
+                          DateFormatter.formatMonthYear(selectedMonth),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (monthBudgets.isEmpty) ...[
+              Text(
+                'No budgets configured for ${DateFormatter.formatMonthYear(selectedMonth)}.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () => _openBudgets(context),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Set Up Budgets'),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Spent: ${CurrencyFormatter.format(totalSpent, symbol: currencySymbol)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Limit: ${CurrencyFormatter.format(totalBudgeted, symbol: currencySymbol)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: usage.clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: isDark
+                      ? AppColors.darkSurfaceSecondary
+                      : AppColors.lightSurfaceSecondary,
+                  valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${(usage * 100).toStringAsFixed(1)}% used',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                  Text(
+                    remaining >= 0
+                        ? '${CurrencyFormatter.format(remaining, symbol: currencySymbol)} left'
+                        : '${CurrencyFormatter.format(remaining.abs(), symbol: currencySymbol)} over limit',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: remaining >= 0
+                          ? (isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary)
+                          : AppColors.expense,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Divider(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                height: 1,
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: InkWell(
+                  onTap: () => _openBudgets(context),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Manage Budgets',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios_rounded,
+                            size: 10, color: AppColors.accent),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

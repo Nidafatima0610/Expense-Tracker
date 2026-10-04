@@ -8,6 +8,7 @@ import '../../../providers/app_state_scope.dart';
 import '../../widgets/category_icon_widget.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/primary_button.dart';
+import 'budget_detail_screen.dart';
 
 class BudgetsScreen extends StatefulWidget {
   const BudgetsScreen({super.key});
@@ -522,7 +523,26 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   }
 
                   return Card(
-                    child: Padding(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => BudgetDetailScreen(
+                              budget: budget,
+                              onEdit: () {
+                                Navigator.of(context).pop();
+                                _showAddEditBudgetModal(budgetToEdit: budget);
+                              },
+                              onDelete: () {
+                                Navigator.of(context).pop();
+                                _handleDeleteBudget(budget);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -740,7 +760,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                         ],
                       ),
                     ),
-                  );
+                  ),
+                );
                 },
               ),
             const SizedBox(height: 20),

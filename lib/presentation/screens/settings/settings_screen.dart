@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../data/services/preferences_service.dart';
 import '../../../providers/app_state_scope.dart';
+import '../../widgets/backup_restore_dialogs.dart';
+import '../../widgets/export_transactions_sheet.dart';
 import '../budgets/budgets_screen.dart';
+import '../calendar/calendar_screen.dart';
 import '../categories/manage_categories_screen.dart';
+import '../recurring/recurring_transactions_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -190,6 +194,55 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmClearAllFinancialData(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          title: const Text('Reset All Financial Data?'),
+          content: const Text(
+            'WARNING: This is a complete destructive reset.\n\n'
+            'The following data will be permanently erased:\n'
+            '• All transactions and transaction history\n'
+            '• All monthly and category budgets\n'
+            '• All recurring transaction rules\n'
+            '• Custom categories (reset to defaults)\n\n'
+            'Your theme and currency preferences will remain unchanged.\n\n'
+            'Are you sure you want to proceed?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.expense,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reset All Data'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && context.mounted) {
+      final appState = AppStateScope.of(context);
+      await appState.clearAllFinancialData();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All financial records and budgets have been reset'),
+            backgroundColor: AppColors.expense,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _loadSampleData(BuildContext context) async {
     final appState = AppStateScope.of(context);
     await appState.loadSampleData();
@@ -358,6 +411,62 @@ class SettingsScreen extends StatelessWidget {
                       );
                     },
                   ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.info.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.repeat_rounded,
+                        color: AppColors.info,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Recurring Transactions',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('${appState.recurringTransactions.length} automated recurring rules'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RecurringTransactionsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.income.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.calendar_month_rounded,
+                        color: AppColors.income,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Financial Calendar',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: const Text('Daily income, expenses & balance breakdown'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CalendarScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -379,6 +488,72 @@ class SettingsScreen extends StatelessWidget {
             Card(
               child: Column(
                 children: [
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.file_upload_outlined,
+                        color: AppColors.accent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Export Transactions (CSV)',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: const Text('Export all or filtered records to standard CSV'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => ExportTransactionsSheet.show(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.income.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.cloud_upload_outlined,
+                        color: AppColors.income,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Create Local Backup (JSON)',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: const Text('Save transactions, budgets, categories & preferences'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => BackupRestoreDialogs.showCreateBackup(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.settings_backup_restore_rounded,
+                        color: AppColors.warning,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Restore from Backup',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: const Text('Safe restore with Replace or Merge strategy'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => BackupRestoreDialogs.showRestoreBackup(context),
+                  ),
+                  const Divider(height: 1),
                   ListTile(
                     leading: Container(
                       padding: const EdgeInsets.all(8),
@@ -409,7 +584,7 @@ class SettingsScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
-                        Icons.delete_forever_rounded,
+                        Icons.delete_outline_rounded,
                         color: AppColors.expense,
                         size: 20,
                       ),
@@ -431,6 +606,38 @@ class SettingsScreen extends StatelessWidget {
                       color: AppColors.expense,
                     ),
                     onTap: () => _confirmClearData(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.delete_forever_rounded,
+                        color: Colors.red,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Clear All Financial Data',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: Colors.red,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Erase transactions, budgets, recurring rules & reset categories',
+                    ),
+                    trailing: const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Colors.red,
+                    ),
+                    onTap: () => _confirmClearAllFinancialData(context),
                   ),
                 ],
               ),

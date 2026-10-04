@@ -20,15 +20,16 @@ class PreferencesService {
   static const String _keyHasSeeded = 'pref_has_seeded_sample_data';
 
   static const List<CurrencyInfo> supportedCurrencies = [
+    CurrencyInfo(symbol: '₨', code: 'PKR', name: 'Pakistani Rupee'),
     CurrencyInfo(symbol: r'$', code: 'USD', name: 'US Dollar'),
     CurrencyInfo(symbol: '€', code: 'EUR', name: 'Euro'),
     CurrencyInfo(symbol: '£', code: 'GBP', name: 'British Pound'),
+    CurrencyInfo(symbol: 'AED ', code: 'AED', name: 'UAE Dirham'),
+    CurrencyInfo(symbol: 'SAR ', code: 'SAR', name: 'Saudi Riyal'),
     CurrencyInfo(symbol: '₹', code: 'INR', name: 'Indian Rupee'),
-    CurrencyInfo(symbol: '₨', code: 'PKR', name: 'Pakistani Rupee'),
     CurrencyInfo(symbol: r'C$', code: 'CAD', name: 'Canadian Dollar'),
     CurrencyInfo(symbol: r'A$', code: 'AUD', name: 'Australian Dollar'),
     CurrencyInfo(symbol: '¥', code: 'JPY', name: 'Japanese Yen'),
-    CurrencyInfo(symbol: 'AED ', code: 'AED', name: 'UAE Dirham'),
   ];
 
   final SharedPreferences _prefs;
@@ -63,11 +64,11 @@ class PreferencesService {
   }
 
   String getCurrencySymbol() {
-    return _prefs.getString(_keyCurrencySymbol) ?? r'$';
+    return _prefs.getString(_keyCurrencySymbol) ?? '₨';
   }
 
   String getCurrencyCode() {
-    return _prefs.getString(_keyCurrencyCode) ?? 'USD';
+    return _prefs.getString(_keyCurrencyCode) ?? 'PKR';
   }
 
   Future<void> setCurrency(CurrencyInfo currency) async {

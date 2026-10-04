@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../data/models/recurring_transaction_model.dart';
 import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/primary_button.dart';
@@ -11,11 +12,13 @@ import '../categories/manage_categories_screen.dart';
 class AddEditTransactionScreen extends StatefulWidget {
   final TransactionModel? transactionToEdit;
   final TransactionType initialType;
+  final DateTime? prefilledDate;
 
   const AddEditTransactionScreen({
     super.key,
     this.transactionToEdit,
     this.initialType = TransactionType.expense,
+    this.prefilledDate,
   });
 
   @override
@@ -55,10 +58,17 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       _titleController = TextEditingController();
       _amountController = TextEditingController();
       _noteController = TextEditingController();
-      _selectedDate = DateTime.now();
+      _selectedDate = widget.prefilledDate ?? DateTime.now();
       _selectedCategory = '';
       _recurrence = RecurrenceFrequency.none;
     }
+
+    _titleController.addListener(_onFieldChanged);
+    _amountController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -127,15 +137,56 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       return;
     }
 
+    final appState = AppStateScope.of(context);
+    final title = _titleController.text.trim();
+    final note = _noteController.text.trim().isEmpty
+        ? null
+        : _noteController.text.trim();
+
+    // Duplicate detection warning (does not block legitimate duplicates)
+    final isDuplicate = appState.hasDuplicateTransaction(
+      title: title,
+      amount: amount,
+      date: _selectedDate,
+      category: _selectedCategory,
+      excludeId: widget.transactionToEdit?.id,
+    );
+
+    if (isDuplicate) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+              SizedBox(width: 8),
+              Text('Duplicate Warning'),
+            ],
+          ),
+          content: Text(
+            'A transaction with the title "$title", amount, category, and date already exists.\n\nDo you want to save this transaction anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Review Entry'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save Anyway'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true) {
+        return;
+      }
+    }
+
     setState(() => _isSaving = true);
 
     try {
-      final appState = AppStateScope.of(context);
-      final title = _titleController.text.trim();
-      final note = _noteController.text.trim().isEmpty
-          ? null
-          : _noteController.text.trim();
-
       if (_isEditing) {
         final updated = widget.transactionToEdit!.copyWith(
           title: title,
@@ -161,6 +212,24 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           recurrence: _recurrence,
         );
         await appState.addTransaction(newTx);
+
+        // If marked with recurrence, also create recurring schedule
+        if (_recurrence != RecurrenceFrequency.none) {
+          final recRule = RecurringTransactionModel(
+            id: uuid.v4(),
+            title: title,
+            amount: amount,
+            type: _type,
+            category: _selectedCategory,
+            note: note,
+            startDate: _selectedDate,
+            frequency: _recurrence,
+            isActive: true,
+            lastGeneratedDate: _selectedDate,
+            createdAt: DateTime.now(),
+          );
+          await appState.addRecurringTransaction(recRule);
+        }
       }
 
       if (mounted) {
@@ -665,7 +734,44 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                     alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
+
+                // Non-blocking duplicate detection warning
+                if (_titleController.text.trim().isNotEmpty &&
+                    (double.tryParse(_amountController.text.trim()) ?? 0.0) > 0 &&
+                    _selectedCategory.isNotEmpty &&
+                    appState.hasDuplicateTransaction(
+                      title: _titleController.text.trim(),
+                      amount: double.tryParse(_amountController.text.trim()) ?? 0.0,
+                      date: _selectedDate,
+                      category: _selectedCategory,
+                      excludeId: widget.transactionToEdit?.id,
+                    ))
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded, size: 20, color: AppColors.warning),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Note: A transaction with this title, amount, and date already exists.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.warning,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 // Save Button
                 PrimaryButton(
