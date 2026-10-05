@@ -7,7 +7,9 @@ import 'package:share_plus/share_plus.dart';
 import '../models/budget_model.dart';
 import '../models/category_model.dart';
 import '../models/recurring_transaction_model.dart';
+import '../models/savings_goal_model.dart';
 import '../models/transaction_model.dart';
+import '../models/transaction_template_model.dart';
 
 enum RestoreMode {
   replace,
@@ -21,6 +23,8 @@ class RestoreResult {
   final List<CategoryModel>? categories;
   final List<BudgetModel>? budgets;
   final List<RecurringTransactionModel>? recurringTransactions;
+  final List<SavingsGoalModel>? savingsGoals;
+  final List<TransactionTemplateModel>? transactionTemplates;
   final Map<String, dynamic>? preferences;
 
   const RestoreResult({
@@ -30,6 +34,8 @@ class RestoreResult {
     this.categories,
     this.budgets,
     this.recurringTransactions,
+    this.savingsGoals,
+    this.transactionTemplates,
     this.preferences,
   });
 
@@ -45,8 +51,8 @@ class DataExportService {
     String currencySymbol = '₨',
   }) {
     final buffer = StringBuffer();
-    // CSV Header
-    buffer.writeln('Date,Time,Title,Type,Category,Amount,Currency,Note,Recurrence');
+    // CSV Header with PaymentMethod
+    buffer.writeln('Date,Time,Title,Type,Category,Amount,Currency,PaymentMethod,Note,Recurrence');
 
     final dateFormat = DateFormat('yyyy-MM-dd');
     final timeFormat = DateFormat('HH:mm');
@@ -58,11 +64,12 @@ class DataExportService {
       final typeStr = tx.type.name.toUpperCase();
       final categoryEscaped = _escapeCsvField(tx.category);
       final amountStr = tx.amount.toStringAsFixed(2);
+      final paymentMethodStr = _escapeCsvField(tx.paymentMethod.displayName);
       final noteEscaped = _escapeCsvField(tx.note ?? '');
       final recurrenceStr = tx.recurrence.displayName;
 
       buffer.writeln(
-        '$dateStr,$timeStr,$titleEscaped,$typeStr,$categoryEscaped,$amountStr,$currencySymbol,$noteEscaped,$recurrenceStr',
+        '$dateStr,$timeStr,$titleEscaped,$typeStr,$categoryEscaped,$amountStr,$currencySymbol,$paymentMethodStr,$noteEscaped,$recurrenceStr',
       );
     }
 
@@ -96,22 +103,26 @@ class DataExportService {
     );
   }
 
-  /// Generates full structured JSON backup
+  /// Generates full structured JSON backup (Schema Version 2)
   static String generateJsonBackup({
     required List<TransactionModel> transactions,
     required List<CategoryModel> categories,
     required List<BudgetModel> budgets,
     required List<RecurringTransactionModel> recurringTransactions,
+    List<SavingsGoalModel> savingsGoals = const [],
+    List<TransactionTemplateModel> transactionTemplates = const [],
     required Map<String, dynamic> preferences,
   }) {
     final backupData = {
       'app': 'ExpenseTracker',
-      'version': 1,
+      'version': 2,
       'exportedAt': DateTime.now().toIso8601String(),
       'transactions': transactions.map((t) => t.toJson()).toList(),
       'categories': categories.map((c) => c.toJson()).toList(),
       'budgets': budgets.map((b) => b.toJson()).toList(),
       'recurringTransactions': recurringTransactions.map((r) => r.toJson()).toList(),
+      'savingsGoals': savingsGoals.map((g) => g.toJson()).toList(),
+      'transactionTemplates': transactionTemplates.map((t) => t.toJson()).toList(),
       'preferences': preferences,
     };
 
@@ -125,6 +136,8 @@ class DataExportService {
     required List<CategoryModel> categories,
     required List<BudgetModel> budgets,
     required List<RecurringTransactionModel> recurringTransactions,
+    List<SavingsGoalModel> savingsGoals = const [],
+    List<TransactionTemplateModel> transactionTemplates = const [],
     required Map<String, dynamic> preferences,
   }) async {
     final jsonContent = generateJsonBackup(
@@ -132,6 +145,8 @@ class DataExportService {
       categories: categories,
       budgets: budgets,
       recurringTransactions: recurringTransactions,
+      savingsGoals: savingsGoals,
+      transactionTemplates: transactionTemplates,
       preferences: preferences,
     );
 
@@ -149,6 +164,8 @@ class DataExportService {
     required List<CategoryModel> categories,
     required List<BudgetModel> budgets,
     required List<RecurringTransactionModel> recurringTransactions,
+    List<SavingsGoalModel> savingsGoals = const [],
+    List<TransactionTemplateModel> transactionTemplates = const [],
     required Map<String, dynamic> preferences,
   }) async {
     final file = await saveBackupToFile(
@@ -156,6 +173,8 @@ class DataExportService {
       categories: categories,
       budgets: budgets,
       recurringTransactions: recurringTransactions,
+      savingsGoals: savingsGoals,
+      transactionTemplates: transactionTemplates,
       preferences: preferences,
     );
 
@@ -185,15 +204,15 @@ class DataExportService {
         return RestoreResult.failure('Incompatible backup file: not an Expense Tracker backup.');
       }
 
-      // Validate schema/version field
+      // Validate schema/version field (Supports v1 and v2)
       if (decoded.containsKey('version')) {
         final ver = decoded['version'];
         if (ver is! num || ver.toInt() < 1) {
           return RestoreResult.failure('Invalid backup schema version.');
         }
-        if (ver.toInt() > 1) {
+        if (ver.toInt() > 2) {
           return RestoreResult.failure(
-            'Backup version $ver is newer than current app version (v1). Please update the application before restoring.',
+            'Backup version $ver is newer than current app version (v2). Please update the application before restoring.',
           );
         }
       }
@@ -202,13 +221,15 @@ class DataExportService {
           decoded.containsKey('categories') ||
           decoded.containsKey('budgets') ||
           decoded.containsKey('recurringTransactions') ||
+          decoded.containsKey('savingsGoals') ||
+          decoded.containsKey('transactionTemplates') ||
           decoded.containsKey('preferences');
 
       if (!hasDataSections) {
         return RestoreResult.failure('Incompatible backup: file contains no recognized financial data sections.');
       }
 
-      // Parse transactions
+      // Parse transactions (handles missing paymentMethod gracefully in TransactionModel.fromJson)
       final List<TransactionModel> parsedTransactions = [];
       if (decoded['transactions'] is List) {
         for (final item in decoded['transactions']) {
@@ -258,6 +279,30 @@ class DataExportService {
         }
       }
 
+      // Parse savings goals (v2 feature - defaults to empty list on v1)
+      final List<SavingsGoalModel> parsedGoals = [];
+      if (decoded['savingsGoals'] is List) {
+        for (final item in decoded['savingsGoals']) {
+          if (item is Map<String, dynamic>) {
+            try {
+              parsedGoals.add(SavingsGoalModel.fromJson(item));
+            } catch (_) {}
+          }
+        }
+      }
+
+      // Parse transaction templates (v2 feature - defaults to empty list on v1)
+      final List<TransactionTemplateModel> parsedTemplates = [];
+      if (decoded['transactionTemplates'] is List) {
+        for (final item in decoded['transactionTemplates']) {
+          if (item is Map<String, dynamic>) {
+            try {
+              parsedTemplates.add(TransactionTemplateModel.fromJson(item));
+            } catch (_) {}
+          }
+        }
+      }
+
       Map<String, dynamic>? parsedPreferences;
       if (decoded['preferences'] is Map<String, dynamic>) {
         parsedPreferences = decoded['preferences'] as Map<String, dynamic>;
@@ -270,11 +315,80 @@ class DataExportService {
         categories: parsedCategories,
         budgets: parsedBudgets,
         recurringTransactions: parsedRecurring,
+        savingsGoals: parsedGoals,
+        transactionTemplates: parsedTemplates,
         preferences: parsedPreferences,
       );
     } catch (e) {
       return RestoreResult.failure('Malformed JSON: ${e.toString()}');
     }
+  }
+
+  /// Generates a clean, readable, professional shareable financial summary text
+  static String generateShareableReportText({
+    required String periodTitle,
+    required String dateRangeStr,
+    required double totalIncome,
+    required double totalExpenses,
+    required double netBalance,
+    required int transactionCount,
+    required double averageDailySpending,
+    required TransactionModel? highestExpense,
+    required List<MapEntry<String, double>> topCategories,
+    required List<MapEntry<PaymentMethod, double>> paymentMethodBreakdown,
+    String? budgetSummary,
+    String? savingsGoalsSummary,
+    String currencySymbol = '₨',
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('📊 FINANCIAL REPORT');
+    buffer.writeln('Period: $periodTitle ($dateRangeStr)');
+    buffer.writeln('Generated: ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}');
+    buffer.writeln('────────────────────────────────────────');
+    buffer.writeln('💵 SUMMARY');
+    buffer.writeln('• Total Income: $currencySymbol ${totalIncome.toStringAsFixed(2)}');
+    buffer.writeln('• Total Expenses: $currencySymbol ${totalExpenses.toStringAsFixed(2)}');
+    final netPrefix = netBalance >= 0 ? '+' : '';
+    buffer.writeln('• Net Balance: $netPrefix$currencySymbol ${netBalance.toStringAsFixed(2)}');
+    buffer.writeln('• Total Transactions: $transactionCount');
+    buffer.writeln('• Avg Daily Spending: $currencySymbol ${averageDailySpending.toStringAsFixed(2)}');
+    if (highestExpense != null) {
+      buffer.writeln('• Highest Expense: "${highestExpense.title}" ($currencySymbol ${highestExpense.amount.toStringAsFixed(2)})');
+    }
+
+    if (topCategories.isNotEmpty) {
+      buffer.writeln('────────────────────────────────────────');
+      buffer.writeln('🏷️ TOP EXPENSE CATEGORIES');
+      for (final entry in topCategories.take(5)) {
+        final pct = totalExpenses > 0 ? (entry.value / totalExpenses * 100).toStringAsFixed(1) : '0.0';
+        buffer.writeln('• ${entry.key}: $currencySymbol ${entry.value.toStringAsFixed(2)} ($pct%)');
+      }
+    }
+
+    if (paymentMethodBreakdown.isNotEmpty) {
+      buffer.writeln('────────────────────────────────────────');
+      buffer.writeln('💳 PAYMENT METHOD BREAKDOWN');
+      for (final entry in paymentMethodBreakdown) {
+        final pct = totalExpenses > 0 ? (entry.value / totalExpenses * 100).toStringAsFixed(1) : '0.0';
+        buffer.writeln('• ${entry.key.displayName}: $currencySymbol ${entry.value.toStringAsFixed(2)} ($pct%)');
+      }
+    }
+
+    if (budgetSummary != null && budgetSummary.trim().isNotEmpty) {
+      buffer.writeln('────────────────────────────────────────');
+      buffer.writeln('🎯 BUDGET STATUS');
+      buffer.writeln(budgetSummary.trim());
+    }
+
+    if (savingsGoalsSummary != null && savingsGoalsSummary.trim().isNotEmpty) {
+      buffer.writeln('────────────────────────────────────────');
+      buffer.writeln('🌱 SAVINGS GOALS');
+      buffer.writeln(savingsGoalsSummary.trim());
+    }
+
+    buffer.writeln('────────────────────────────────────────');
+    buffer.writeln('Report generated by Expense Tracker App');
+    return buffer.toString();
   }
 
   /// Copies text to system clipboard

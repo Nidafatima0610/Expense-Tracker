@@ -14,6 +14,10 @@ class AddEditTransactionScreen extends StatefulWidget {
   final TransactionType initialType;
   final DateTime? prefilledDate;
   final String? prefilledCategory;
+  final PaymentMethod? prefilledPaymentMethod;
+  final double? prefilledAmount;
+  final String? prefilledTitle;
+  final String? prefilledNote;
 
   const AddEditTransactionScreen({
     super.key,
@@ -21,6 +25,10 @@ class AddEditTransactionScreen extends StatefulWidget {
     this.initialType = TransactionType.expense,
     this.prefilledDate,
     this.prefilledCategory,
+    this.prefilledPaymentMethod,
+    this.prefilledAmount,
+    this.prefilledTitle,
+    this.prefilledNote,
   });
 
   @override
@@ -37,8 +45,10 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
   late TextEditingController _noteController;
   late DateTime _selectedDate;
   late String _selectedCategory;
+  late PaymentMethod _selectedPaymentMethod;
   late RecurrenceFrequency _recurrence;
   bool _isSaving = false;
+  bool _hasInitializedPreferences = false;
 
   bool get _isEditing => widget.transactionToEdit != null;
 
@@ -54,19 +64,47 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       _noteController = TextEditingController(text: edit.note ?? '');
       _selectedDate = edit.date;
       _selectedCategory = edit.category;
+      _selectedPaymentMethod = edit.paymentMethod;
       _recurrence = edit.recurrence;
     } else {
       _type = widget.initialType;
-      _titleController = TextEditingController();
-      _amountController = TextEditingController();
-      _noteController = TextEditingController();
+      _titleController =
+          TextEditingController(text: widget.prefilledTitle ?? '');
+      _amountController = TextEditingController(
+        text: widget.prefilledAmount != null
+            ? widget.prefilledAmount!.toStringAsFixed(2)
+            : '',
+      );
+      _noteController = TextEditingController(text: widget.prefilledNote ?? '');
       _selectedDate = widget.prefilledDate ?? DateTime.now();
       _selectedCategory = widget.prefilledCategory ?? '';
+      _selectedPaymentMethod =
+          widget.prefilledPaymentMethod ?? PaymentMethod.cash;
       _recurrence = RecurrenceFrequency.none;
     }
 
     _titleController.addListener(_onFieldChanged);
     _amountController.addListener(_onFieldChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_hasInitializedPreferences && widget.transactionToEdit == null) {
+      _hasInitializedPreferences = true;
+      final appState = AppStateScope.of(context);
+      if (widget.prefilledPaymentMethod == null) {
+        _selectedPaymentMethod = appState.getLastUsedPaymentMethod();
+      }
+      if (_selectedCategory.isEmpty && widget.prefilledCategory == null) {
+        final lastUsed = _type == TransactionType.expense
+            ? appState.getLastUsedExpenseCategory()
+            : appState.getLastUsedIncomeCategory();
+        if (lastUsed != null && lastUsed.isNotEmpty) {
+          _selectedCategory = lastUsed;
+        }
+      }
+    }
   }
 
   void _onFieldChanged() {
@@ -195,6 +233,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           amount: amount,
           type: _type,
           category: _selectedCategory,
+          paymentMethod: _selectedPaymentMethod,
           date: _selectedDate,
           note: note,
           recurrence: _recurrence,
@@ -208,12 +247,26 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           amount: amount,
           type: _type,
           category: _selectedCategory,
+          paymentMethod: _selectedPaymentMethod,
           date: _selectedDate,
           note: note,
           createdAt: DateTime.now(),
           recurrence: _recurrence,
         );
         await appState.addTransaction(newTx);
+
+        // Remember user's last selected category & payment method for quick add
+        if (_type == TransactionType.expense) {
+          await appState.rememberLastUsed(
+            expenseCategory: _selectedCategory,
+            paymentMethod: _selectedPaymentMethod,
+          );
+        } else {
+          await appState.rememberLastUsed(
+            incomeCategory: _selectedCategory,
+            paymentMethod: _selectedPaymentMethod,
+          );
+        }
 
         // If marked with recurrence, also create recurring schedule
         if (_recurrence != RecurrenceFrequency.none) {
@@ -286,6 +339,14 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           icon: const Icon(Icons.close_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          if (!_isEditing && appState.transactionTemplates.isNotEmpty)
+            TextButton.icon(
+              icon: const Icon(Icons.flash_on_rounded, size: 16),
+              label: const Text('Template'),
+              onPressed: () => _showTemplatePicker(context, appState),
+            ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -295,6 +356,39 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!_isEditing && appState.transactionTemplates.isNotEmpty) ...[
+                  InkWell(
+                    onTap: () => _showTemplatePicker(context, appState),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.flash_on_rounded, color: AppColors.accent, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Quick Add from Template',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 // Income / Expense Type Selector
                 Container(
                   padding: const EdgeInsets.all(4),
@@ -649,6 +743,44 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Payment Method Selector
+                Text(
+                  'PAYMENT METHOD',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: PaymentMethod.values.map((method) {
+                      final isSelected = _selectedPaymentMethod == method;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          avatar: Icon(method.icon, size: 16),
+                          label: Text(method.displayName),
+                          selected: isSelected,
+                          selectedColor:
+                              AppColors.accent.withValues(alpha: 0.2),
+                          onSelected: (val) {
+                            if (val) {
+                              setState(() => _selectedPaymentMethod = method);
+                            }
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
                 // Date Picker Tile
                 Text(
                   'DATE',
@@ -789,6 +921,110 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showTemplatePicker(BuildContext context, dynamic appState) {
+    final templates = appState.transactionTemplates;
+    if (templates.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (modalCtx) {
+        final isDark = Theme.of(modalCtx).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Select a Template',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(modalCtx),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: templates.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, index) {
+                      final t = templates[index];
+                      final isExp = t.isExpense;
+                      final col = isExp ? AppColors.expense : AppColors.income;
+                      return ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                          ),
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: col.withValues(alpha: 0.12),
+                          child: Icon(
+                            isExp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                            color: col,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text(
+                          '${t.category} • ${t.paymentMethod.displayName}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Text(
+                          '${appState.currencySymbol} ${t.amount.toStringAsFixed(2)}',
+                          style: TextStyle(fontWeight: FontWeight.w800, color: col),
+                        ),
+                        onTap: () {
+                          Navigator.pop(modalCtx);
+                          setState(() {
+                            _type = t.type;
+                            _titleController.text = t.title;
+                            _amountController.text = t.amount.toStringAsFixed(2);
+                            _selectedCategory = t.category;
+                            _selectedPaymentMethod = t.paymentMethod;
+                            if (t.note != null && t.note!.isNotEmpty) {
+                              _noteController.text = t.note!;
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

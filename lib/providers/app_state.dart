@@ -4,11 +4,15 @@ import 'package:uuid/uuid.dart';
 import '../data/models/budget_model.dart';
 import '../data/models/category_model.dart';
 import '../data/models/recurring_transaction_model.dart';
+import '../data/models/savings_goal_model.dart';
 import '../data/models/transaction_model.dart';
+import '../data/models/transaction_template_model.dart';
 import '../data/repositories/budget_repository.dart';
 import '../data/repositories/category_repository.dart';
 import '../data/repositories/recurring_transaction_repository.dart';
+import '../data/repositories/savings_goal_repository.dart';
 import '../data/repositories/transaction_repository.dart';
+import '../data/repositories/transaction_template_repository.dart';
 import '../data/services/data_export_service.dart';
 import '../data/services/preferences_service.dart';
 
@@ -307,11 +311,15 @@ class AppState extends ChangeNotifier {
   final CategoryRepository categoryRepository;
   final BudgetRepository budgetRepository;
   final RecurringTransactionRepository recurringTransactionRepository;
+  final SavingsGoalRepository savingsGoalRepository;
+  final TransactionTemplateRepository transactionTemplateRepository;
 
   List<TransactionModel> _transactions = [];
   List<CategoryModel> _categories = [];
   List<BudgetModel> _budgets = [];
   List<RecurringTransactionModel> _recurringTransactions = [];
+  List<SavingsGoalModel> _savingsGoals = [];
+  List<TransactionTemplateModel> _transactionTemplates = [];
   bool _isLoading = true;
 
   // Dashboard Month selection
@@ -325,6 +333,7 @@ class AppState extends ChangeNotifier {
   String _searchQuery = '';
   TransactionType? _typeFilter; // null means All
   String? _categoryFilter;
+  PaymentMethod? _paymentMethodFilter;
   TransactionDateFilter _dateFilter = TransactionDateFilter.all;
   DateTimeRange? _customDateRange;
   double? _minAmountFilter;
@@ -344,7 +353,10 @@ class AppState extends ChangeNotifier {
     required this.categoryRepository,
     required this.budgetRepository,
     required this.recurringTransactionRepository,
-  }) {
+    SavingsGoalRepository? savingsGoalRepository,
+    TransactionTemplateRepository? transactionTemplateRepository,
+  })  : savingsGoalRepository = savingsGoalRepository ?? SavingsGoalRepository(repository.prefs),
+        transactionTemplateRepository = transactionTemplateRepository ?? TransactionTemplateRepository(repository.prefs) {
     _themeMode = preferencesService.getThemeMode();
     _currencySymbol = preferencesService.getCurrencySymbol();
     _currencyCode = preferencesService.getCurrencyCode();
@@ -358,6 +370,9 @@ class AppState extends ChangeNotifier {
   List<BudgetModel> get budgets => List.unmodifiable(_budgets);
   List<RecurringTransactionModel> get recurringTransactions =>
       List.unmodifiable(_recurringTransactions);
+  List<SavingsGoalModel> get savingsGoals => List.unmodifiable(_savingsGoals);
+  List<TransactionTemplateModel> get transactionTemplates =>
+      List.unmodifiable(_transactionTemplates);
   ThemeMode get themeMode => _themeMode;
   String get currencySymbol => _currencySymbol;
   String get currencyCode => _currencyCode;
@@ -367,6 +382,7 @@ class AppState extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   TransactionType? get typeFilter => _typeFilter;
   String? get categoryFilter => _categoryFilter;
+  PaymentMethod? get paymentMethodFilter => _paymentMethodFilter;
   TransactionDateFilter get dateFilter => _dateFilter;
   DateTimeRange? get customDateRange => _customDateRange;
   double? get minAmountFilter => _minAmountFilter;
@@ -377,10 +393,24 @@ class AppState extends ChangeNotifier {
       _searchQuery.trim().isNotEmpty ||
       _typeFilter != null ||
       _categoryFilter != null ||
+      _paymentMethodFilter != null ||
       _dateFilter != TransactionDateFilter.all ||
       _minAmountFilter != null ||
       _maxAmountFilter != null ||
       _sortOption != TransactionSortOption.newest;
+
+  // Savings goals aggregated metrics
+  double get totalSavingsGoalTarget =>
+      _savingsGoals.fold(0.0, (sum, g) => sum + g.targetAmount);
+  double get totalSavingsGoalSaved =>
+      _savingsGoals.fold(0.0, (sum, g) => sum + g.currentAmount);
+  double get overallSavingsGoalProgress => totalSavingsGoalTarget > 0
+      ? (totalSavingsGoalSaved / totalSavingsGoalTarget).clamp(0.0, 1.0)
+      : 0.0;
+  int get completedSavingsGoalsCount =>
+      _savingsGoals.where((g) => g.isCompleted).length;
+  List<SavingsGoalModel> get activeSavingsGoals =>
+      _savingsGoals.where((g) => !g.isCompleted).toList();
 
   Future<void> _init() async {
     _isLoading = true;
@@ -391,17 +421,26 @@ class AppState extends ChangeNotifier {
     _budgets = await budgetRepository.getBudgets();
     _recurringTransactions =
         await recurringTransactionRepository.getRecurringTransactions();
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    _transactionTemplates = await transactionTemplateRepository.getTemplates();
 
-    // If first time opening app and has never seeded, seed sample transactions
+    // If first time opening app and has never seeded, seed sample transactions & goals & templates
     if (_transactions.isEmpty && !preferencesService.getHasSeeded()) {
       final sample = repository.generateSampleTransactions();
       await repository.saveTransactions(sample);
       final sampleRec =
           recurringTransactionRepository.generateSampleRecurringTransactions();
       await recurringTransactionRepository.saveRecurringTransactions(sampleRec);
+      final sampleGoals = savingsGoalRepository.generateSampleGoals();
+      await savingsGoalRepository.saveGoals(sampleGoals);
+      final sampleTemplates = transactionTemplateRepository.generateSampleTemplates();
+      await transactionTemplateRepository.saveTemplates(sampleTemplates);
+
       await preferencesService.setHasSeeded(true);
       _transactions = sample;
       _recurringTransactions = sampleRec;
+      _savingsGoals = sampleGoals;
+      _transactionTemplates = sampleTemplates;
     }
 
     _sortTransactions();
@@ -524,6 +563,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setPaymentMethodFilter(PaymentMethod? method) {
+    _paymentMethodFilter = method;
+    notifyListeners();
+  }
+
   void setDateFilter(TransactionDateFilter filter, {DateTimeRange? range}) {
     _dateFilter = filter;
     _customDateRange = range;
@@ -545,6 +589,7 @@ class AppState extends ChangeNotifier {
     _searchQuery = '';
     _typeFilter = null;
     _categoryFilter = null;
+    _paymentMethodFilter = null;
     _dateFilter = TransactionDateFilter.all;
     _customDateRange = null;
     _minAmountFilter = null;
@@ -563,9 +608,15 @@ class AppState extends ChangeNotifier {
         final query = _searchQuery.toLowerCase().trim();
         final titleMatch = t.title.toLowerCase().contains(query);
         final categoryMatch = t.category.toLowerCase().contains(query);
+        final paymentMethodMatch =
+            t.paymentMethod.displayName.toLowerCase().contains(query);
         final noteMatch = t.note?.toLowerCase().contains(query) ?? false;
         final amountMatch = t.amount.toString().contains(query);
-        if (!titleMatch && !categoryMatch && !noteMatch && !amountMatch) {
+        if (!titleMatch &&
+            !categoryMatch &&
+            !paymentMethodMatch &&
+            !noteMatch &&
+            !amountMatch) {
           return false;
         }
       }
@@ -582,7 +633,13 @@ class AppState extends ChangeNotifier {
         return false;
       }
 
-      // 4. Amount Range Filter
+      // 4. Payment Method Filter
+      if (_paymentMethodFilter != null &&
+          t.paymentMethod != _paymentMethodFilter) {
+        return false;
+      }
+
+      // 5. Amount Range Filter
       if (_minAmountFilter != null && t.amount < _minAmountFilter!) {
         return false;
       }
@@ -590,7 +647,7 @@ class AppState extends ChangeNotifier {
         return false;
       }
 
-      // 5. Date Filter
+      // 6. Date Filter
       final txDate = DateTime(t.date.year, t.date.month, t.date.day);
       switch (_dateFilter) {
         case TransactionDateFilter.all:
@@ -1566,9 +1623,13 @@ class AppState extends ChangeNotifier {
     _transactions.clear();
     _budgets.clear();
     _recurringTransactions.clear();
+    _savingsGoals.clear();
+    _transactionTemplates.clear();
     await repository.clearAllTransactions();
     await budgetRepository.clearAll();
     await recurringTransactionRepository.clearAll();
+    await savingsGoalRepository.clearAll();
+    await transactionTemplateRepository.clearAll();
     _categories = CategoryRepository.getDefaultCategories();
     await categoryRepository.saveCategories(_categories);
     notifyListeners();
@@ -1599,6 +1660,14 @@ class AppState extends ChangeNotifier {
         _recurringTransactions = validation.recurringTransactions!;
         await recurringTransactionRepository
             .saveRecurringTransactions(_recurringTransactions);
+      }
+      if (validation.savingsGoals != null) {
+        _savingsGoals = validation.savingsGoals!;
+        await savingsGoalRepository.saveGoals(_savingsGoals);
+      }
+      if (validation.transactionTemplates != null) {
+        _transactionTemplates = validation.transactionTemplates!;
+        await transactionTemplateRepository.saveTemplates(_transactionTemplates);
       }
       if (validation.preferences != null) {
         final prefs = validation.preferences!;
@@ -1662,6 +1731,25 @@ class AppState extends ChangeNotifier {
         await recurringTransactionRepository
             .saveRecurringTransactions(_recurringTransactions);
       }
+      if (validation.savingsGoals != null) {
+        final existingGoalIds = _savingsGoals.map((g) => g.id).toSet();
+        for (final g in validation.savingsGoals!) {
+          if (!existingGoalIds.contains(g.id)) {
+            _savingsGoals.add(g);
+          }
+        }
+        await savingsGoalRepository.saveGoals(_savingsGoals);
+      }
+      if (validation.transactionTemplates != null) {
+        final existingTemplateIds =
+            _transactionTemplates.map((t) => t.id).toSet();
+        for (final t in validation.transactionTemplates!) {
+          if (!existingTemplateIds.contains(t.id)) {
+            _transactionTemplates.add(t);
+          }
+        }
+        await transactionTemplateRepository.saveTemplates(_transactionTemplates);
+      }
     }
 
     notifyListeners();
@@ -1673,8 +1761,343 @@ class AppState extends ChangeNotifier {
     final sample = repository.generateSampleTransactions();
     _transactions = sample;
     _sortTransactions();
+    final sampleRec =
+        recurringTransactionRepository.generateSampleRecurringTransactions();
+    _recurringTransactions = sampleRec;
+    await recurringTransactionRepository.saveRecurringTransactions(sampleRec);
+
+    if (_savingsGoals.isEmpty) {
+      final sampleGoals = savingsGoalRepository.generateSampleGoals();
+      _savingsGoals = sampleGoals;
+      await savingsGoalRepository.saveGoals(sampleGoals);
+    }
+    if (_transactionTemplates.isEmpty) {
+      final sampleTemplates = transactionTemplateRepository.generateSampleTemplates();
+      _transactionTemplates = sampleTemplates;
+      await transactionTemplateRepository.saveTemplates(sampleTemplates);
+    }
+
     notifyListeners();
     await repository.saveTransactions(_transactions);
+  }
+
+  // --- Savings Goals Operations ---
+
+  Future<void> addSavingsGoal(SavingsGoalModel goal) async {
+    await isReady;
+    await savingsGoalRepository.addGoal(goal);
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    notifyListeners();
+  }
+
+  Future<void> updateSavingsGoal(SavingsGoalModel goal) async {
+    await isReady;
+    await savingsGoalRepository.updateGoal(goal);
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    notifyListeners();
+  }
+
+  Future<void> deleteSavingsGoal(String id) async {
+    await isReady;
+    await savingsGoalRepository.deleteGoal(id);
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    notifyListeners();
+  }
+
+  Future<void> addGoalContribution(
+    String goalId,
+    double amount, {
+    String? note,
+    PaymentMethod? paymentMethod,
+    DateTime? date,
+  }) async {
+    await isReady;
+    if (amount <= 0) return;
+    final index = _savingsGoals.indexWhere((g) => g.id == goalId);
+    if (index == -1) return;
+
+    final goal = _savingsGoals[index];
+    final newCurrent = goal.currentAmount + amount;
+    final contribution = GoalContribution(
+      id: const Uuid().v4(),
+      amount: amount,
+      date: date ?? DateTime.now(),
+      note: note,
+      paymentMethod: paymentMethod ?? PaymentMethod.cash,
+      isWithdrawal: false,
+    );
+
+    final updatedContributions = List<GoalContribution>.from(goal.contributions)
+      ..insert(0, contribution);
+    final updatedGoal = goal.copyWith(
+      currentAmount: newCurrent,
+      contributions: updatedContributions,
+    );
+
+    await savingsGoalRepository.updateGoal(updatedGoal);
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    notifyListeners();
+  }
+
+  Future<void> withdrawGoalContribution(
+    String goalId,
+    double amount, {
+    String? note,
+  }) async {
+    await isReady;
+    if (amount <= 0) return;
+    final index = _savingsGoals.indexWhere((g) => g.id == goalId);
+    if (index == -1) return;
+
+    final goal = _savingsGoals[index];
+    final newCurrent = (goal.currentAmount - amount).clamp(0.0, double.infinity);
+    final contribution = GoalContribution(
+      id: const Uuid().v4(),
+      amount: amount,
+      date: DateTime.now(),
+      note: note ?? 'Withdrawal',
+      isWithdrawal: true,
+    );
+
+    final updatedContributions = List<GoalContribution>.from(goal.contributions)
+      ..insert(0, contribution);
+    final updatedGoal = goal.copyWith(
+      currentAmount: newCurrent,
+      contributions: updatedContributions,
+    );
+
+    await savingsGoalRepository.updateGoal(updatedGoal);
+    _savingsGoals = await savingsGoalRepository.getGoals();
+    notifyListeners();
+  }
+
+  // --- Transaction Templates Operations ---
+
+  Future<void> addTransactionTemplate(TransactionTemplateModel template) async {
+    await isReady;
+    await transactionTemplateRepository.addTemplate(template);
+    _transactionTemplates = await transactionTemplateRepository.getTemplates();
+    notifyListeners();
+  }
+
+  Future<void> updateTransactionTemplate(TransactionTemplateModel template) async {
+    await isReady;
+    await transactionTemplateRepository.updateTemplate(template);
+    _transactionTemplates = await transactionTemplateRepository.getTemplates();
+    notifyListeners();
+  }
+
+  Future<void> deleteTransactionTemplate(String id) async {
+    await isReady;
+    await transactionTemplateRepository.deleteTemplate(id);
+    _transactionTemplates = await transactionTemplateRepository.getTemplates();
+    notifyListeners();
+  }
+
+  Future<void> duplicateTransactionTemplate(String id) async {
+    await isReady;
+    final original = _transactionTemplates.firstWhere((t) => t.id == id);
+    final duplicate = original.copyWith(
+      id: const Uuid().v4(),
+      title: '${original.title} (Copy)',
+      createdAt: DateTime.now(),
+    );
+    await addTransactionTemplate(duplicate);
+  }
+
+  // --- Payment Method Breakdown & Analytics ---
+
+  List<MapEntry<PaymentMethod, double>> getPaymentMethodBreakdown({
+    DateTimeRange? customRange,
+    int? year,
+    int? month,
+    TransactionType type = TransactionType.expense,
+  }) {
+    final relevant = _transactions.where((t) {
+      if (t.type != type) return false;
+      if (customRange != null) {
+        final start = DateTime(
+          customRange.start.year,
+          customRange.start.month,
+          customRange.start.day,
+        );
+        final end = DateTime(
+          customRange.end.year,
+          customRange.end.month,
+          customRange.end.day,
+          23,
+          59,
+          59,
+        );
+        if (t.date.isBefore(start) || t.date.isAfter(end)) return false;
+      } else if (year != null && month != null) {
+        if (t.date.year != year || t.date.month != month) return false;
+      }
+      return true;
+    });
+
+    final Map<PaymentMethod, double> totals = {};
+    for (final tx in relevant) {
+      totals[tx.paymentMethod] = (totals[tx.paymentMethod] ?? 0.0) + tx.amount;
+    }
+
+    final entries = totals.entries.toList();
+    entries.sort((a, b) => b.value.compareTo(a.value));
+    return entries;
+  }
+
+  // --- Quick Add Preferences Helper ---
+
+  String? getLastUsedExpenseCategory() =>
+      preferencesService.getLastUsedExpenseCategory();
+
+  String? getLastUsedIncomeCategory() =>
+      preferencesService.getLastUsedIncomeCategory();
+
+  PaymentMethod getLastUsedPaymentMethod() =>
+      preferencesService.getLastUsedPaymentMethod();
+
+  Future<void> rememberLastUsed({
+    String? expenseCategory,
+    String? incomeCategory,
+    PaymentMethod? paymentMethod,
+  }) async {
+    if (expenseCategory != null && expenseCategory.isNotEmpty) {
+      await preferencesService.setLastUsedExpenseCategory(expenseCategory);
+    }
+    if (incomeCategory != null && incomeCategory.isNotEmpty) {
+      await preferencesService.setLastUsedIncomeCategory(incomeCategory);
+    }
+    if (paymentMethod != null) {
+      await preferencesService.setLastUsedPaymentMethod(paymentMethod);
+    }
+  }
+
+  // --- Shareable Financial Report String ---
+
+  String getShareableFinancialReportText({
+    DateTimeRange? customRange,
+    int? year,
+    int? month,
+    String periodTitle = 'Current Month',
+  }) {
+    final relevant = _transactions.where((t) {
+      if (customRange != null) {
+        final start = DateTime(
+          customRange.start.year,
+          customRange.start.month,
+          customRange.start.day,
+        );
+        final end = DateTime(
+          customRange.end.year,
+          customRange.end.month,
+          customRange.end.day,
+          23,
+          59,
+          59,
+        );
+        if (t.date.isBefore(start) || t.date.isAfter(end)) return false;
+      } else if (year != null && month != null) {
+        if (t.date.year != year || t.date.month != month) return false;
+      }
+      return true;
+    }).toList();
+
+    final totalInc = relevant
+        .where((t) => t.isIncome)
+        .fold(0.0, (s, t) => s + t.amount);
+    final totalExp = relevant
+        .where((t) => t.isExpense)
+        .fold(0.0, (s, t) => s + t.amount);
+    final net = totalInc - totalExp;
+
+    String dateRangeStr;
+    int daysInPeriod = 30;
+    if (customRange != null) {
+      final df = DateFormat('MMM dd, yyyy');
+      dateRangeStr = '${df.format(customRange.start)} - ${df.format(customRange.end)}';
+      daysInPeriod = customRange.end.difference(customRange.start).inDays + 1;
+      if (daysInPeriod <= 0) daysInPeriod = 1;
+    } else if (year != null && month != null) {
+      final date = DateTime(year, month, 1);
+      dateRangeStr = DateFormat('MMMM yyyy').format(date);
+      final nextMonth = month == 12 ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
+      daysInPeriod = nextMonth.difference(date).inDays;
+    } else {
+      dateRangeStr = DateFormat('MMMM yyyy').format(DateTime.now());
+    }
+
+    final avgDaily = totalExp / (daysInPeriod > 0 ? daysInPeriod : 1);
+
+    final expenseTransactions = relevant.where((t) => t.isExpense).toList();
+    TransactionModel? highestExpense;
+    if (expenseTransactions.isNotEmpty) {
+      expenseTransactions.sort((a, b) => b.amount.compareTo(a.amount));
+      highestExpense = expenseTransactions.first;
+    }
+
+    final Map<String, double> catTotals = {};
+    for (final tx in expenseTransactions) {
+      catTotals[tx.category] = (catTotals[tx.category] ?? 0.0) + tx.amount;
+    }
+    final topCategories = catTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final paymentMethodBreakdown = getPaymentMethodBreakdown(
+      customRange: customRange,
+      year: year,
+      month: month,
+    );
+
+    // Budget Summary
+    String? budgetSummary;
+    if (_budgets.isNotEmpty) {
+      final currentMonthBudgets = _budgets.where((b) {
+        if (year != null && month != null) {
+          return b.year == year && b.month == month;
+        }
+        final now = DateTime.now();
+        return b.year == now.year && b.month == now.month;
+      }).toList();
+
+      if (currentMonthBudgets.isNotEmpty) {
+        final bBuf = StringBuffer();
+        for (final b in currentMonthBudgets) {
+          final spent = catTotals[b.category] ?? 0.0;
+          final pct = (spent / (b.amount > 0 ? b.amount : 1) * 100).toStringAsFixed(0);
+          final status = spent > b.amount ? '⚠️ Exceeded' : '✅ On track';
+          bBuf.writeln('• ${b.category}: $currencySymbol ${spent.toStringAsFixed(0)} / $currencySymbol ${b.amount.toStringAsFixed(0)} ($pct%) - $status');
+        }
+        budgetSummary = bBuf.toString();
+      }
+    }
+
+    // Savings Goals Summary
+    String? goalsSummary;
+    if (_savingsGoals.isNotEmpty) {
+      final gBuf = StringBuffer();
+      for (final g in _savingsGoals.take(4)) {
+        final pct = (g.progressPercentage * 100).toStringAsFixed(0);
+        gBuf.writeln('• ${g.name}: $currencySymbol ${g.currentAmount.toStringAsFixed(0)} / $currencySymbol ${g.targetAmount.toStringAsFixed(0)} ($pct%) [${g.statusDisplay}]');
+      }
+      goalsSummary = gBuf.toString();
+    }
+
+    return DataExportService.generateShareableReportText(
+      periodTitle: periodTitle,
+      dateRangeStr: dateRangeStr,
+      totalIncome: totalInc,
+      totalExpenses: totalExp,
+      netBalance: net,
+      transactionCount: relevant.length,
+      averageDailySpending: avgDaily,
+      highestExpense: highestExpense,
+      topCategories: topCategories,
+      paymentMethodBreakdown: paymentMethodBreakdown,
+      budgetSummary: budgetSummary,
+      savingsGoalsSummary: goalsSummary,
+      currencySymbol: currencySymbol,
+    );
   }
 
   // --- Preferences & Onboarding ---

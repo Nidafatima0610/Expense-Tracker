@@ -36,9 +36,10 @@ class TransactionDetailsSheet extends StatelessWidget {
     final summary = StringBuffer();
     summary.writeln('${isIncome ? 'Income' : 'Expense'} Details:');
     summary.writeln('• Title: ${transaction.title}');
+    summary.writeln('• Amount: $amountStr');
     summary.writeln('• Type: ${transaction.type.displayName}');
     summary.writeln('• Category: ${transaction.category}');
-    summary.writeln('• Amount: $amountStr');
+    summary.writeln('• Payment Method: ${transaction.paymentMethod.displayName}');
     summary.writeln('• Date: $dateStr');
     if (transaction.isRecurring) {
       summary.writeln('• Recurrence: ${transaction.recurrence.displayName}');
@@ -280,6 +281,14 @@ class TransactionDetailsSheet extends StatelessWidget {
             icon: Icons.category_rounded,
             label: 'Category',
             value: transaction.category,
+            isDark: isDark,
+          ),
+          const SizedBox(height: 14),
+          _buildDetailRow(
+            context,
+            icon: transaction.paymentMethod.icon,
+            label: 'Payment Method',
+            value: transaction.paymentMethod.displayName,
             isDark: isDark,
           ),
           const SizedBox(height: 14),

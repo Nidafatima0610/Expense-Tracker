@@ -101,6 +101,35 @@ class TransactionTile extends StatelessWidget {
                                 : AppColors.lightTextMuted,
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 3,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isDark
+                                ? AppColors.darkTextMuted
+                                : AppColors.lightTextMuted,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          transaction.paymentMethod.icon,
+                          size: 11,
+                          color: isDark
+                              ? AppColors.darkTextMuted
+                              : AppColors.lightTextMuted,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          transaction.paymentMethod.displayName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark
+                                ? AppColors.darkTextMuted
+                                : AppColors.lightTextMuted,
+                          ),
+                        ),
                         if (transaction.isRecurring) ...[
                           const SizedBox(width: 6),
                           Icon(

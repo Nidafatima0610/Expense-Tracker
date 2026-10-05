@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/transaction_model.dart';
 
 class CurrencyInfo {
   final String symbol;
@@ -24,6 +25,9 @@ class PreferencesService {
   static const String _keyReminderUpcomingRecurring = 'pref_reminder_upcoming_recurring';
   static const String _keyReminderBudgetWarnings = 'pref_reminder_budget_warnings';
   static const String _keyReminderMonthlyReview = 'pref_reminder_monthly_review';
+  static const String _keyLastUsedExpenseCategory = 'pref_last_used_expense_cat';
+  static const String _keyLastUsedIncomeCategory = 'pref_last_used_income_cat';
+  static const String _keyLastUsedPaymentMethod = 'pref_last_used_payment_method';
 
   static const List<CurrencyInfo> supportedCurrencies = [
     CurrencyInfo(symbol: '₨', code: 'PKR', name: 'Pakistani Rupee'),
@@ -140,5 +144,31 @@ class PreferencesService {
 
   Future<void> setReminderMonthlyReview(bool enabled) async {
     await _prefs.setBool(_keyReminderMonthlyReview, enabled);
+  }
+
+  String? getLastUsedExpenseCategory() {
+    return _prefs.getString(_keyLastUsedExpenseCategory);
+  }
+
+  Future<void> setLastUsedExpenseCategory(String category) async {
+    await _prefs.setString(_keyLastUsedExpenseCategory, category);
+  }
+
+  String? getLastUsedIncomeCategory() {
+    return _prefs.getString(_keyLastUsedIncomeCategory);
+  }
+
+  Future<void> setLastUsedIncomeCategory(String category) async {
+    await _prefs.setString(_keyLastUsedIncomeCategory, category);
+  }
+
+  PaymentMethod getLastUsedPaymentMethod() {
+    final raw = _prefs.getString(_keyLastUsedPaymentMethod);
+    if (raw == null) return PaymentMethod.cash;
+    return PaymentMethod.fromString(raw);
+  }
+
+  Future<void> setLastUsedPaymentMethod(PaymentMethod method) async {
+    await _prefs.setString(_keyLastUsedPaymentMethod, method.name);
   }
 }

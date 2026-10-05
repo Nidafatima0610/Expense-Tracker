@@ -236,7 +236,46 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       ),
                       const SizedBox(height: 18),
 
-                      // 4. Amount Range Filter
+                      // 4. Payment Method Filter
+                      const Text(
+                        'PAYMENT METHOD',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('All Methods'),
+                            selected: appState.paymentMethodFilter == null,
+                            onSelected: (_) {
+                              appState.setPaymentMethodFilter(null);
+                              setSheetState(() {});
+                            },
+                          ),
+                          ...PaymentMethod.values.map((m) {
+                            final isSelected = appState.paymentMethodFilter == m;
+                            return ChoiceChip(
+                              avatar: Icon(m.icon, size: 14),
+                              label: Text(m.displayName),
+                              selected: isSelected,
+                              selectedColor: AppColors.accent.withValues(alpha: 0.2),
+                              onSelected: (_) {
+                                appState.setPaymentMethodFilter(isSelected ? null : m);
+                                setSheetState(() {});
+                              },
+                            );
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      // 5. Amount Range Filter
                       const Text(
                         'AMOUNT RANGE',
                         style: TextStyle(
@@ -553,6 +592,62 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(width: 8),
+
+                        // Payment Method Quick Dropdown
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? AppColors.darkSurfaceSecondary
+                                : AppColors.lightSurfaceSecondary,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isDark
+                                  ? AppColors.darkBorder
+                                  : AppColors.lightBorder,
+                            ),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<PaymentMethod?>(
+                              value: appState.paymentMethodFilter,
+                              isDense: true,
+                              icon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? AppColors.darkTextPrimary
+                                    : AppColors.lightTextPrimary,
+                              ),
+                              dropdownColor: isDark
+                                  ? AppColors.darkSurface
+                                  : AppColors.lightSurface,
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('All Methods'),
+                                ),
+                                ...PaymentMethod.values.map((method) {
+                                  return DropdownMenuItem(
+                                    value: method,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(method.icon, size: 14),
+                                        const SizedBox(width: 6),
+                                        Text(method.displayName),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                              onChanged: (method) {
+                                appState.setPaymentMethodFilter(method);
+                              },
+                            ),
+                          ),
+                        ),
 
                         if (hasActiveFilter) ...[
                           const SizedBox(width: 8),
@@ -597,6 +692,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           child: InputChip(
                             label: Text('Category: ${appState.categoryFilter}'),
                             onDeleted: () => appState.setCategoryFilter(null),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (appState.paymentMethodFilter != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            avatar: Icon(appState.paymentMethodFilter!.icon, size: 14),
+                            label: Text('Method: ${appState.paymentMethodFilter!.displayName}'),
+                            onDeleted: () => appState.setPaymentMethodFilter(null),
                             deleteIconColor: AppColors.accent,
                             visualDensity: VisualDensity.compact,
                           ),

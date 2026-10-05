@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 enum TransactionType {
@@ -54,6 +55,65 @@ enum RecurrenceFrequency {
   }
 }
 
+enum PaymentMethod {
+  cash,
+  bankAccount,
+  debitCard,
+  creditCard,
+  mobileWallet,
+  other;
+
+  String get displayName {
+    switch (this) {
+      case PaymentMethod.cash:
+        return 'Cash';
+      case PaymentMethod.bankAccount:
+        return 'Bank Account';
+      case PaymentMethod.debitCard:
+        return 'Debit Card';
+      case PaymentMethod.creditCard:
+        return 'Credit Card';
+      case PaymentMethod.mobileWallet:
+        return 'Mobile Wallet';
+      case PaymentMethod.other:
+        return 'Other';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case PaymentMethod.cash:
+        return Icons.money_rounded;
+      case PaymentMethod.bankAccount:
+        return Icons.account_balance_rounded;
+      case PaymentMethod.debitCard:
+        return Icons.credit_card_rounded;
+      case PaymentMethod.creditCard:
+        return Icons.credit_score_rounded;
+      case PaymentMethod.mobileWallet:
+        return Icons.phone_android_rounded;
+      case PaymentMethod.other:
+        return Icons.payment_rounded;
+    }
+  }
+
+  static PaymentMethod fromString(String? value) {
+    if (value == null) return PaymentMethod.cash;
+    for (final method in PaymentMethod.values) {
+      if (method.name.toLowerCase() == value.toLowerCase()) {
+        return method;
+      }
+    }
+    final normalized = value.toLowerCase().replaceAll(' ', '').replaceAll('_', '');
+    if (normalized == 'cash') return PaymentMethod.cash;
+    if (normalized == 'bankaccount' || normalized == 'bank') return PaymentMethod.bankAccount;
+    if (normalized == 'debitcard' || normalized == 'debit') return PaymentMethod.debitCard;
+    if (normalized == 'creditcard' || normalized == 'credit') return PaymentMethod.creditCard;
+    if (normalized == 'mobilewallet' || normalized == 'wallet') return PaymentMethod.mobileWallet;
+    return PaymentMethod.cash;
+  }
+}
+
 class TransactionModel {
   final String id;
   final String title;
@@ -64,6 +124,7 @@ class TransactionModel {
   final String? note;
   final DateTime createdAt;
   final RecurrenceFrequency recurrence;
+  final PaymentMethod paymentMethod;
 
   TransactionModel({
     required this.id,
@@ -75,6 +136,7 @@ class TransactionModel {
     this.note,
     required this.createdAt,
     this.recurrence = RecurrenceFrequency.none,
+    this.paymentMethod = PaymentMethod.cash,
   }) : amount = (amount.isNaN || amount.isInfinite || amount < 0) ? 0.0 : amount;
 
   bool get isExpense => type == TransactionType.expense;
@@ -91,6 +153,7 @@ class TransactionModel {
     String? note,
     DateTime? createdAt,
     RecurrenceFrequency? recurrence,
+    PaymentMethod? paymentMethod,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -102,6 +165,7 @@ class TransactionModel {
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       recurrence: recurrence ?? this.recurrence,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
     );
   }
 
@@ -116,6 +180,7 @@ class TransactionModel {
       'note': note,
       'createdAt': createdAt.toIso8601String(),
       'recurrence': recurrence.name,
+      'paymentMethod': paymentMethod.name,
     };
   }
 
@@ -154,6 +219,7 @@ class TransactionModel {
       note: json['note'] as String?,
       createdAt: parsedCreatedAt,
       recurrence: RecurrenceFrequency.fromString(json['recurrence'] as String?),
+      paymentMethod: PaymentMethod.fromString(json['paymentMethod'] as String?),
     );
   }
 

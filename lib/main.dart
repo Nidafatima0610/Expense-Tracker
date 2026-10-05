@@ -5,7 +5,9 @@ import 'core/theme/app_theme.dart';
 import 'data/repositories/budget_repository.dart';
 import 'data/repositories/category_repository.dart';
 import 'data/repositories/recurring_transaction_repository.dart';
+import 'data/repositories/savings_goal_repository.dart';
 import 'data/repositories/transaction_repository.dart';
+import 'data/repositories/transaction_template_repository.dart';
 import 'data/services/preferences_service.dart';
 import 'presentation/screens/main_screen.dart';
 import 'presentation/screens/onboarding/onboarding_screen.dart';
@@ -29,6 +31,8 @@ void main() async {
   final categoryRepository = CategoryRepository(prefs);
   final budgetRepository = BudgetRepository(prefs);
   final recurringTransactionRepository = RecurringTransactionRepository(prefs);
+  final savingsGoalRepository = SavingsGoalRepository(prefs);
+  final transactionTemplateRepository = TransactionTemplateRepository(prefs);
 
   final appState = AppState(
     repository: transactionRepository,
@@ -36,6 +40,8 @@ void main() async {
     categoryRepository: categoryRepository,
     budgetRepository: budgetRepository,
     recurringTransactionRepository: recurringTransactionRepository,
+    savingsGoalRepository: savingsGoalRepository,
+    transactionTemplateRepository: transactionTemplateRepository,
   );
 
   runApp(

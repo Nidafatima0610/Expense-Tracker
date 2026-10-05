@@ -9,6 +9,8 @@ import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/category_icon_widget.dart';
+import '../../widgets/share_report_dialog.dart';
+import '../goals/savings_goals_screen.dart';
 
 enum ReportPeriod {
   thisWeek,
@@ -188,6 +190,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       appBar: AppBar(
         title: const Text('Financial Reports'),
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Share Financial Summary',
+            icon: const Icon(Icons.share_rounded),
+            onPressed: () => ShareReportDialog.show(context),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -447,7 +456,263 @@ class _ReportsScreenState extends State<ReportsScreen> {
             currencySymbol: currencySymbol,
             categories: appState.categories,
           ),
+          const SizedBox(height: 20),
+
+          // 8. Payment Method Breakdown Section
+          _buildPaymentMethodBreakdownSection(
+            context: context,
+            appState: appState,
+            isDark: isDark,
+            range: range,
+            totalExpense: totalExpense,
+            currencySymbol: currencySymbol,
+          ),
+          const SizedBox(height: 20),
+
+          // 9. Savings Goals Summary Section
+          if (appState.savingsGoals.isNotEmpty) ...[
+            _buildSavingsGoalsSummarySection(
+              context: context,
+              appState: appState,
+              isDark: isDark,
+              currencySymbol: currencySymbol,
+            ),
+            const SizedBox(height: 20),
+          ],
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodBreakdownSection({
+    required BuildContext context,
+    required AppState appState,
+    required bool isDark,
+    required DateTimeRange range,
+    required double totalExpense,
+    required String currencySymbol,
+  }) {
+    final breakdown = appState.getPaymentMethodBreakdown(
+      customRange: range,
+      type: TransactionType.expense,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.payment_rounded, color: AppColors.accent, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Payment Method Breakdown',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (breakdown.isEmpty || totalExpense <= 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'No expense transactions in this period.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ),
+            )
+          else
+            ...breakdown.map((entry) {
+              final method = entry.key;
+              final amount = entry.value;
+              final pct = totalExpense > 0 ? (amount / totalExpense) : 0.0;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(method.icon, size: 16, color: AppColors.accent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            method.displayName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$currencySymbol ${NumberFormat('#,##0.00').format(amount)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${(pct * 100).toStringAsFixed(1)}%)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: pct.clamp(0.0, 1.0),
+                        minHeight: 6,
+                        backgroundColor: isDark
+                            ? AppColors.darkSurfaceSecondary
+                            : AppColors.lightSurfaceSecondary,
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavingsGoalsSummarySection({
+    required BuildContext context,
+    required AppState appState,
+    required bool isDark,
+    required String currencySymbol,
+  }) {
+    final goals = appState.savingsGoals;
+    final totalTarget = appState.totalSavingsGoalTarget;
+    final totalSaved = appState.totalSavingsGoalSaved;
+    final progress = appState.overallSavingsGoalProgress;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.savings_rounded, color: AppColors.income, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Savings Goals Progress',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SavingsGoalsScreen(),
+                    ),
+                  );
+                },
+                child: const Text('View All', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Saved: $currencySymbol ${NumberFormat('#,##0').format(totalSaved)} of $currencySymbol ${NumberFormat('#,##0').format(totalTarget)}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                '${(progress * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.income,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: isDark ? AppColors.darkSurfaceSecondary : AppColors.lightSurfaceSecondary,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.income),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...goals.take(3).map((g) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Icon(g.icon, size: 14, color: g.statusColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      g.name,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '$currencySymbol ${NumberFormat('#,##0').format(g.currentAmount)} / $currencySymbol ${NumberFormat('#,##0').format(g.targetAmount)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );

@@ -8,7 +8,9 @@ import '../../widgets/export_transactions_sheet.dart';
 import '../budgets/budgets_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../categories/manage_categories_screen.dart';
+import '../goals/savings_goals_screen.dart';
 import '../recurring/recurring_transactions_screen.dart';
+import '../templates/transaction_templates_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -772,6 +774,62 @@ class SettingsScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const CalendarScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.income.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.savings_rounded,
+                        color: AppColors.income,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Savings Goals',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('${appState.savingsGoals.length} goals tracking'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SavingsGoalsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.bolt_rounded,
+                        color: AppColors.accent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Transaction Templates',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text('${appState.transactionTemplates.length} quick-add templates'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TransactionTemplatesScreen(),
                         ),
                       );
                     },

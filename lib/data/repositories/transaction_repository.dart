@@ -10,6 +10,8 @@ class TransactionRepository {
 
   TransactionRepository(this._prefs);
 
+  SharedPreferences get prefs => _prefs;
+
   Future<List<TransactionModel>> getTransactions() async {
     final rawData = _prefs.getString(_storageKey);
     if (rawData == null || rawData.isEmpty) {

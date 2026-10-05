@@ -17,9 +17,12 @@ import '../../widgets/transaction_tile.dart';
 import '../budgets/budgets_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../categories/manage_categories_screen.dart';
+import '../goals/savings_goals_screen.dart';
 import '../recurring/recurring_transactions_screen.dart';
 import '../reports/reports_screen.dart';
+import '../templates/transaction_templates_screen.dart';
 import '../transactions/add_edit_transaction_screen.dart';
+import '../../widgets/share_report_dialog.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onViewAllTransactions;
@@ -100,6 +103,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+
+  void _openSavingsGoals(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SavingsGoalsScreen(),
+      ),
+    );
+  }
+
+  void _openTemplates(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const TransactionTemplatesScreen(),
+      ),
+    );
+  }
+
+  void _applyTemplate(BuildContext context, dynamic template) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddEditTransactionScreen(
+          initialType: template.type,
+          prefilledTitle: template.title,
+          prefilledAmount: template.amount > 0 ? template.amount : null,
+          prefilledCategory: template.category,
+          prefilledPaymentMethod: template.paymentMethod,
+          prefilledNote: template.note,
+        ),
+      ),
+    );
   }
 
   Future<void> _safeAction(Future<void> Function() action) async {
@@ -424,12 +458,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 6. Secondary Quick Actions (Reports, Budgets, Calendar, Recurring, Export, Restore)
+                // 6. Quick Templates / Quick Add Bar
+                _buildQuickTemplatesBar(context, appState, isDark, currencySymbol),
+                const SizedBox(height: 12),
+
+                // 7. Secondary Quick Actions
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   child: Row(
                     children: [
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.savings_rounded,
+                        label: 'Savings Goals',
+                        onTap: () => _openSavingsGoals(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.bolt_rounded,
+                        label: 'Templates',
+                        onTap: () => _openTemplates(context),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildQuickActionChip(
+                        context: context,
+                        isDark: isDark,
+                        icon: Icons.share_rounded,
+                        label: 'Share Report',
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => const ShareReportDialog(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       _buildQuickActionChip(
                         context: context,
                         isDark: isDark,
@@ -704,7 +769,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 11. SPENDING OVERVIEW & PIE CHART
+                // 11. SAVINGS GOALS SUMMARY CARD
+                _buildSavingsGoalsSummaryCard(
+                  context: context,
+                  isDark: isDark,
+                  appState: appState,
+                  currencySymbol: currencySymbol,
+                ),
+                const SizedBox(height: 16),
+
+                // 12. SPENDING OVERVIEW & PIE CHART
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1510,6 +1584,440 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSavingsGoalsSummaryCard({
+    required BuildContext context,
+    required bool isDark,
+    required AppState appState,
+    required String currencySymbol,
+  }) {
+    final goals = appState.savingsGoals;
+    final activeGoals = goals.where((g) => !g.isCompleted).toList();
+    final completedGoals = goals.where((g) => g.isCompleted).toList();
+
+    final totalTarget = goals.fold<double>(0.0, (sum, g) => sum + g.targetAmount);
+    final totalSaved = goals.fold<double>(0.0, (sum, g) => sum + g.currentAmount);
+    final overallProgress = totalTarget > 0 ? (totalSaved / totalTarget).clamp(0.0, 1.0) : 0.0;
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () => _openSavingsGoals(context),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.income.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.savings_rounded,
+                          size: 18,
+                          color: AppColors.income,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'SAVINGS GOALS',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          Text(
+                            goals.isEmpty
+                                ? 'No active targets'
+                                : '${activeGoals.length} Active · ${completedGoals.length} Completed',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.income.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${(overallProgress * 100).toStringAsFixed(0)}% Saved',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.income,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 10,
+                          color: AppColors.income,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (goals.isEmpty) ...[
+                Text(
+                  'Set targets for emergency fund, vacation, or big purchases to track your progress.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => _openSavingsGoals(context),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Create a Goal'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Saved: ${CurrencyFormatter.format(totalSaved, symbol: currencySymbol)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.income,
+                      ),
+                    ),
+                    Text(
+                      'Target: ${CurrencyFormatter.format(totalTarget, symbol: currencySymbol)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: overallProgress,
+                    minHeight: 8,
+                    backgroundColor: isDark
+                        ? AppColors.darkSurfaceSecondary
+                        : AppColors.lightSurfaceSecondary,
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.income),
+                  ),
+                ),
+                if (activeGoals.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ...activeGoals.take(2).map((goal) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Icon(goal.icon, size: 14, color: goal.statusColor),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              goal.name,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '${(goal.progressPercentage * 100).toStringAsFixed(0)}%  (${CurrencyFormatter.format(goal.currentAmount, symbol: currencySymbol)})',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+                const SizedBox(height: 12),
+                Divider(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  height: 1,
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'View All Goals',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 10,
+                        color: AppColors.accent,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickTemplatesBar(
+    BuildContext context,
+    AppState appState,
+    bool isDark,
+    String currencySymbol,
+  ) {
+    final templates = appState.transactionTemplates;
+
+    if (templates.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.bolt_rounded,
+                size: 16,
+                color: AppColors.accent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Quick Add Templates',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Save frequent transactions for 1-tap entry',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () => _openTemplates(context),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+              child: const Text(
+                'Set Up',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.bolt_rounded,
+                  size: 15,
+                  color: AppColors.accent,
+                ),
+                SizedBox(width: 5),
+                Text(
+                  'QUICK ADD',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: () => _openTemplates(context),
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  'Manage →',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: [
+              ...templates.map((template) {
+                final isExp = template.type == TransactionType.expense;
+                final color = isExp ? AppColors.expense : AppColors.income;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: () => _applyTemplate(context, template),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            template.paymentMethod.icon,
+                            size: 13,
+                            color: color,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            template.title,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (template.amount > 0) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '(${CurrencyFormatter.format(template.amount, symbol: currencySymbol)})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              InkWell(
+                onTap: () => _openTemplates(context),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: 14, color: AppColors.accent),
+                      SizedBox(width: 4),
+                      Text(
+                        'Template',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
