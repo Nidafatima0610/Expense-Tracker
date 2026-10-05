@@ -13,12 +13,14 @@ class AddEditTransactionScreen extends StatefulWidget {
   final TransactionModel? transactionToEdit;
   final TransactionType initialType;
   final DateTime? prefilledDate;
+  final String? prefilledCategory;
 
   const AddEditTransactionScreen({
     super.key,
     this.transactionToEdit,
     this.initialType = TransactionType.expense,
     this.prefilledDate,
+    this.prefilledCategory,
   });
 
   @override
@@ -59,7 +61,7 @@ class _AddEditTransactionScreenState extends State<AddEditTransactionScreen> {
       _amountController = TextEditingController();
       _noteController = TextEditingController();
       _selectedDate = widget.prefilledDate ?? DateTime.now();
-      _selectedCategory = '';
+      _selectedCategory = widget.prefilledCategory ?? '';
       _recurrence = RecurrenceFrequency.none;
     }
 

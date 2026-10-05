@@ -38,6 +38,13 @@ void main() {
       ),
     );
 
+    // Verify first-run onboarding is displayed
+    expect(find.text('Track Income & Expenses'), findsOneWidget);
+    expect(find.text('Skip'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+
+    // Complete onboarding and verify MainScreen
+    await appState.completeOnboarding();
     await tester.pumpAndSettle();
 
     // Verify main screen elements

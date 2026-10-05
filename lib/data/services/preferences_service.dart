@@ -18,6 +18,12 @@ class PreferencesService {
   static const String _keyCurrencySymbol = 'pref_currency_symbol';
   static const String _keyCurrencyCode = 'pref_currency_code';
   static const String _keyHasSeeded = 'pref_has_seeded_sample_data';
+  static const String _keyHasCompletedOnboarding = 'pref_has_completed_onboarding';
+  static const String _keyDisplayName = 'pref_display_name';
+  static const String _keyMonthlyBudgetPreference = 'pref_monthly_budget_target';
+  static const String _keyReminderUpcomingRecurring = 'pref_reminder_upcoming_recurring';
+  static const String _keyReminderBudgetWarnings = 'pref_reminder_budget_warnings';
+  static const String _keyReminderMonthlyReview = 'pref_reminder_monthly_review';
 
   static const List<CurrencyInfo> supportedCurrencies = [
     CurrencyInfo(symbol: '₨', code: 'PKR', name: 'Pakistani Rupee'),
@@ -82,5 +88,57 @@ class PreferencesService {
 
   Future<void> setHasSeeded(bool value) async {
     await _prefs.setBool(_keyHasSeeded, value);
+  }
+
+  bool getHasCompletedOnboarding() {
+    return _prefs.getBool(_keyHasCompletedOnboarding) ?? false;
+  }
+
+  Future<void> setHasCompletedOnboarding(bool value) async {
+    await _prefs.setBool(_keyHasCompletedOnboarding, value);
+  }
+
+  String getDisplayName() {
+    return _prefs.getString(_keyDisplayName) ?? '';
+  }
+
+  Future<void> setDisplayName(String name) async {
+    await _prefs.setString(_keyDisplayName, name.trim());
+  }
+
+  double? getMonthlyBudgetPreference() {
+    return _prefs.getDouble(_keyMonthlyBudgetPreference);
+  }
+
+  Future<void> setMonthlyBudgetPreference(double? amount) async {
+    if (amount == null) {
+      await _prefs.remove(_keyMonthlyBudgetPreference);
+    } else {
+      await _prefs.setDouble(_keyMonthlyBudgetPreference, amount);
+    }
+  }
+
+  bool getReminderUpcomingRecurring() {
+    return _prefs.getBool(_keyReminderUpcomingRecurring) ?? true;
+  }
+
+  Future<void> setReminderUpcomingRecurring(bool enabled) async {
+    await _prefs.setBool(_keyReminderUpcomingRecurring, enabled);
+  }
+
+  bool getReminderBudgetWarnings() {
+    return _prefs.getBool(_keyReminderBudgetWarnings) ?? true;
+  }
+
+  Future<void> setReminderBudgetWarnings(bool enabled) async {
+    await _prefs.setBool(_keyReminderBudgetWarnings, enabled);
+  }
+
+  bool getReminderMonthlyReview() {
+    return _prefs.getBool(_keyReminderMonthlyReview) ?? true;
+  }
+
+  Future<void> setReminderMonthlyReview(bool enabled) async {
+    await _prefs.setBool(_keyReminderMonthlyReview, enabled);
   }
 }

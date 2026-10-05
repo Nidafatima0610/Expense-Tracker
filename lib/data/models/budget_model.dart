@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 class BudgetModel {
   final String id;
   final String category; // 'Overall' or specific category name like 'Food'
@@ -57,17 +59,26 @@ class BudgetModel {
   }
 
   factory BudgetModel.fromJson(Map<String, dynamic> json) {
+    final rawAmount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    final validAmount = (rawAmount.isNaN || rawAmount.isInfinite || rawAmount < 0) ? 0.0 : rawAmount;
+    DateTime parsedCreatedAt;
+    try {
+      parsedCreatedAt = json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now();
+    } catch (_) {
+      parsedCreatedAt = DateTime.now();
+    }
+
     return BudgetModel(
-      id: json['id'] as String,
-      category: json['category'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      month: json['month'] as int,
-      year: json['year'] as int,
+      id: json['id'] as String? ?? const Uuid().v4(),
+      category: json['category'] as String? ?? 'Overall',
+      amount: validAmount,
+      month: (json['month'] as num?)?.toInt() ?? DateTime.now().month,
+      year: (json['year'] as num?)?.toInt() ?? DateTime.now().year,
       note: json['note'] as String?,
       isEnabled: json['isEnabled'] as bool? ?? true,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : DateTime.now(),
+      createdAt: parsedCreatedAt,
     );
   }
 

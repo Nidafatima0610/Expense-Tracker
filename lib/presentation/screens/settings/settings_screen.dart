@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/currency_formatter.dart';
 import '../../../data/services/preferences_service.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/backup_restore_dialogs.dart';
@@ -11,6 +12,238 @@ import '../recurring/recurring_transactions_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  void _showDisplayNameDialog(BuildContext context) {
+    final appState = AppStateScope.of(context);
+    final controller = TextEditingController(text: appState.displayName);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Display Name'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Used for personal greeting on the dashboard (e.g. "Good morning, Alex").',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Your Name',
+                  hintText: 'Enter your name or leave blank',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await appState.setDisplayName(controller.text.trim());
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showMonthlyBudgetDialog(BuildContext context) {
+    final appState = AppStateScope.of(context);
+    final currentPref = appState.monthlyBudgetPreference;
+    final controller = TextEditingController(
+      text: currentPref != null ? currentPref.toStringAsFixed(0) : '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Monthly Budget Target'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Set an overall monthly spending target as a financial guideline.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Target Amount (${appState.currencySymbol})',
+                  hintText: 'e.g. 50000',
+                  prefixIcon: const Icon(Icons.track_changes_rounded),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            if (currentPref != null)
+              TextButton(
+                onPressed: () async {
+                  await appState.setMonthlyBudgetPreference(null);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: const Text('Clear', style: TextStyle(color: AppColors.expense)),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final val = double.tryParse(controller.text.trim());
+                await appState.setMonthlyBudgetPreference(val);
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRemindersBottomSheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final appState = AppStateScope.of(ctx);
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Financial Reminders & Alerts',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Manage automated in-app alerts and notifications to keep your finances on track.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.alarm_rounded, color: AppColors.accent, size: 20),
+                  ),
+                  title: const Text(
+                    'Upcoming Recurring Bills',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Show reminders on Dashboard when recurring payments are due',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: appState.reminderUpcomingRecurring,
+                  activeThumbColor: AppColors.accent,
+                  onChanged: (val) {
+                    appState.setReminderUpcomingRecurring(val);
+                  },
+                ),
+                const Divider(),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
+                  ),
+                  title: const Text(
+                    'Budget Warnings & Limits',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Receive prominent alerts at 50%, 75%, 90%, and 100% of budget limits',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: appState.reminderBudgetWarnings,
+                  activeThumbColor: AppColors.warning,
+                  onChanged: (val) {
+                    appState.setReminderBudgetWarnings(val);
+                  },
+                ),
+                const Divider(),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.income.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.assessment_rounded, color: AppColors.income, size: 20),
+                  ),
+                  title: const Text(
+                    'Monthly Financial Review',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Reminder prompt at month-end to review monthly savings and reports',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: appState.reminderMonthlyReview,
+                  activeThumbColor: AppColors.income,
+                  onChanged: (val) {
+                    appState.setReminderMonthlyReview(val);
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   void _showCurrencyPicker(BuildContext context) {
     final appState = AppStateScope.of(context);
@@ -157,9 +390,9 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (dialogCtx) {
         return AlertDialog(
-          title: const Text('Clear All Data?'),
+          title: const Text('Clear All Transactions?'),
           content: const Text(
-            'This will permanently delete all stored transactions. Are you sure you want to proceed?',
+            'This will permanently delete all stored transactions. Budgets and categories will remain untouched. Are you sure?',
           ),
           actions: [
             TextButton(
@@ -266,6 +499,14 @@ class SettingsScreen extends StatelessWidget {
     if (appState.themeMode == ThemeMode.light) themeLabel = 'Light Mode';
     if (appState.themeMode == ThemeMode.dark) themeLabel = 'Dark Mode';
 
+    final displayNameText = appState.displayName.isNotEmpty
+        ? appState.displayName
+        : 'Not set (neutral greeting)';
+
+    final budgetPrefText = appState.monthlyBudgetPreference != null
+        ? CurrencyFormatter.format(appState.monthlyBudgetPreference!, symbol: appState.currencySymbol)
+        : 'Not configured';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -274,20 +515,14 @@ class SettingsScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
-            // Section 1: Preferences
-            Text(
-              'PREFERENCES',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
-            ),
+            // ==========================================
+            // SECTION 1: APPEARANCE
+            // ==========================================
+            _buildSectionHeader('APPEARANCE', isDark),
             const SizedBox(height: 10),
             Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   ListTile(
@@ -340,20 +575,94 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Section 2: Financial Management
-            Text(
-              'FINANCIAL MANAGEMENT',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
-            ),
+            // ==========================================
+            // SECTION 2: PREFERENCES
+            // ==========================================
+            _buildSectionHeader('PREFERENCES', isDark),
             const SizedBox(height: 10),
             Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.person_outline_rounded,
+                        color: AppColors.accent,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Display Name',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(displayNameText),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => _showDisplayNameDialog(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.flag_outlined,
+                        color: AppColors.warning,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Monthly Budget Target',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(budgetPrefText),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => _showMonthlyBudgetDialog(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.income.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_active_outlined,
+                        color: AppColors.income,
+                        size: 20,
+                      ),
+                    ),
+                    title: const Text(
+                      'Reminders & Financial Alerts',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: const Text('Recurring due dates, budget warnings & review alerts'),
+                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () => _showRemindersBottomSheet(context),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ==========================================
+            // SECTION 3: FINANCIAL MANAGEMENT
+            // ==========================================
+            _buildSectionHeader('FINANCIAL MANAGEMENT', isDark),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   ListTile(
@@ -472,20 +781,14 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Section 3: Data Management
-            Text(
-              'DATA MANAGEMENT',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
-            ),
+            // ==========================================
+            // SECTION 4: DATA SAFETY & BACKUP
+            // ==========================================
+            _buildSectionHeader('DATA SAFETY & BACKUP', isDark),
             const SizedBox(height: 10),
             Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   ListTile(
@@ -527,7 +830,7 @@ class SettingsScreen extends StatelessWidget {
                       'Create Local Backup (JSON)',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    subtitle: const Text('Save transactions, budgets, categories & preferences'),
+                    subtitle: const Text('Save transactions, budgets, categories & preferences (Schema v1)'),
                     trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
                     onTap: () => BackupRestoreDialogs.showCreateBackup(context),
                   ),
@@ -549,7 +852,7 @@ class SettingsScreen extends StatelessWidget {
                       'Restore from Backup',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    subtitle: const Text('Safe restore with Replace or Merge strategy'),
+                    subtitle: const Text('Safe restore with version check & Replace/Merge strategy'),
                     trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
                     onTap: () => BackupRestoreDialogs.showRestoreBackup(context),
                   ),
@@ -571,7 +874,7 @@ class SettingsScreen extends StatelessWidget {
                       'Load Sample Transactions',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
-                    subtitle: const Text('Add demo records for presentation'),
+                    subtitle: const Text('Add demo records for quick testing'),
                     trailing: const Icon(Icons.download_rounded, size: 20),
                     onTap: () => _loadSampleData(context),
                   ),
@@ -622,7 +925,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                     title: const Text(
-                      'Clear All Financial Data',
+                      'Reset All Financial Data',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -644,20 +947,14 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Section 3: About
-            Text(
-              'ABOUT',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.1,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
-            ),
+            // ==========================================
+            // SECTION 5: ABOUT
+            // ==========================================
+            _buildSectionHeader('ABOUT', isDark),
             const SizedBox(height: 10),
             Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -695,7 +992,7 @@ class SettingsScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'Version 1.0.0 (Production Release)',
+                              'Version 1.0.0 (Production Ready)',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark
@@ -709,7 +1006,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'A production-ready financial tracking application built with Flutter. Features local persistence, dynamic financial metrics, category breakdown reports, and multi-currency support.',
+                      'A portfolio-ready, production-grade personal financial manager built in Flutter with clean local persistence, date grouping, recurring schedules, multi-tier budget alerts, comprehensive yearly analytics, and data safety guarantees.',
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.45,
@@ -725,6 +1022,20 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 30),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, bool isDark) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.1,
+        color: isDark
+            ? AppColors.darkTextSecondary
+            : AppColors.lightTextSecondary,
       ),
     );
   }

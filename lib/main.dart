@@ -8,6 +8,7 @@ import 'data/repositories/recurring_transaction_repository.dart';
 import 'data/repositories/transaction_repository.dart';
 import 'data/services/preferences_service.dart';
 import 'presentation/screens/main_screen.dart';
+import 'presentation/screens/onboarding/onboarding_screen.dart';
 import 'providers/app_state.dart';
 import 'providers/app_state_scope.dart';
 
@@ -64,7 +65,9 @@ class ExpenseTrackerApp extends StatelessWidget {
                 child: CircularProgressIndicator(),
               ),
             )
-          : const MainScreen(),
+          : (appState.hasCompletedOnboarding
+              ? const MainScreen()
+              : const OnboardingScreen()),
     );
   }
 }

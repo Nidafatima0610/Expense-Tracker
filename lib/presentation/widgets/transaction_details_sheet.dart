@@ -97,10 +97,19 @@ class TransactionDetailsSheet extends StatelessWidget {
       await appState.deleteTransaction(transaction.id);
       if (context.mounted) {
         Navigator.of(context).pop(); // Close bottom sheet
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Deleted "${transaction.title}"'),
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'UNDO',
+              textColor: AppColors.accent,
+              onPressed: () {
+                appState.undoDeleteTransaction();
+              },
+            ),
           ),
         );
       }

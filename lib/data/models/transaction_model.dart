@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 enum TransactionType {
   income,
   expense;
@@ -63,17 +65,17 @@ class TransactionModel {
   final DateTime createdAt;
   final RecurrenceFrequency recurrence;
 
-  const TransactionModel({
+  TransactionModel({
     required this.id,
     required this.title,
-    required this.amount,
+    double amount = 0.0,
     required this.type,
     required this.category,
     required this.date,
     this.note,
     required this.createdAt,
     this.recurrence = RecurrenceFrequency.none,
-  });
+  }) : amount = (amount.isNaN || amount.isInfinite || amount < 0) ? 0.0 : amount;
 
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
@@ -118,17 +120,39 @@ class TransactionModel {
   }
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) {
-    return TransactionModel(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      type: TransactionType.fromString(json['type'] as String? ?? 'expense'),
-      category: json['category'] as String,
-      date: DateTime.parse(json['date'] as String),
-      note: json['note'] as String?,
-      createdAt: json['createdAt'] != null
+    final dynamic raw = json['amount'];
+    double rawAmount = 0.0;
+    if (raw is num) {
+      rawAmount = raw.toDouble();
+    } else if (raw is String) {
+      rawAmount = double.tryParse(raw) ?? 0.0;
+    }
+    final validAmount = (rawAmount.isNaN || rawAmount.isInfinite || rawAmount < 0) ? 0.0 : rawAmount;
+    DateTime parsedDate;
+    try {
+      parsedDate = json['date'] != null ? DateTime.parse(json['date'] as String) : DateTime.now();
+    } catch (_) {
+      parsedDate = DateTime.now();
+    }
+
+    DateTime parsedCreatedAt;
+    try {
+      parsedCreatedAt = json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
-          : DateTime.now(),
+          : DateTime.now();
+    } catch (_) {
+      parsedCreatedAt = DateTime.now();
+    }
+
+    return TransactionModel(
+      id: json['id'] as String? ?? const Uuid().v4(),
+      title: json['title'] as String? ?? 'Untitled',
+      amount: validAmount,
+      type: TransactionType.fromString(json['type'] as String? ?? 'expense'),
+      category: json['category'] as String? ?? 'Other',
+      date: parsedDate,
+      note: json['note'] as String?,
+      createdAt: parsedCreatedAt,
       recurrence: RecurrenceFrequency.fromString(json['recurrence'] as String?),
     );
   }

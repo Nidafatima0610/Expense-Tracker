@@ -168,7 +168,7 @@ class DataExportService {
     );
   }
 
-  /// Parses and validates a JSON backup string with full error checking
+  /// Parses and validates a JSON backup string with full error checking and schema versioning
   static RestoreResult parseAndValidateBackup(String jsonString) {
     if (jsonString.trim().isEmpty) {
       return RestoreResult.failure('Backup data is empty.');
@@ -183,6 +183,29 @@ class DataExportService {
       // Check app identifier if present
       if (decoded.containsKey('app') && decoded['app'] != 'ExpenseTracker') {
         return RestoreResult.failure('Incompatible backup file: not an Expense Tracker backup.');
+      }
+
+      // Validate schema/version field
+      if (decoded.containsKey('version')) {
+        final ver = decoded['version'];
+        if (ver is! num || ver.toInt() < 1) {
+          return RestoreResult.failure('Invalid backup schema version.');
+        }
+        if (ver.toInt() > 1) {
+          return RestoreResult.failure(
+            'Backup version $ver is newer than current app version (v1). Please update the application before restoring.',
+          );
+        }
+      }
+
+      final hasDataSections = decoded.containsKey('transactions') ||
+          decoded.containsKey('categories') ||
+          decoded.containsKey('budgets') ||
+          decoded.containsKey('recurringTransactions') ||
+          decoded.containsKey('preferences');
+
+      if (!hasDataSections) {
+        return RestoreResult.failure('Incompatible backup: file contains no recognized financial data sections.');
       }
 
       // Parse transactions

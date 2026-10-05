@@ -5,11 +5,17 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state.dart';
 import '../../../providers/app_state_scope.dart';
+import '../../widgets/transaction_details_sheet.dart';
 import '../../widgets/transaction_tile.dart';
 import '../transactions/add_edit_transaction_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
+  final DateTime? initialDate;
+
+  const CalendarScreen({
+    super.key,
+    this.initialDate,
+  });
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -22,9 +28,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _displayedMonth = DateTime(now.year, now.month, 1);
-    _selectedDay = DateTime(now.year, now.month, now.day);
+    final initial = widget.initialDate ?? DateTime.now();
+    _displayedMonth = DateTime(initial.year, initial.month, 1);
+    _selectedDay = DateTime(initial.year, initial.month, initial.day);
   }
 
   void _previousMonth() {
@@ -354,47 +360,66 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    dateFormatted,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      dateFormatted,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AddEditTransactionScreen(
-                            prefilledDate: _selectedDay,
-                          ),
+                  Row(
+                    children: [
+                      // Add Income button
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.income,
+                          side: BorderSide(color: AppColors.income.withValues(alpha: 0.5)),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add_circle_outline,
-                              size: 16, color: AppColors.accent),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Add',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.accent,
+                        icon: const Icon(Icons.add_rounded, size: 14),
+                        label: const Text('Income', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddEditTransactionScreen(
+                                initialType: TransactionType.income,
+                                prefilledDate: _selectedDay,
+                              ),
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
+                      const SizedBox(width: 6),
+                      // Add Expense button
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.expense,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.remove_rounded, size: 14),
+                        label: const Text('Expense', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddEditTransactionScreen(
+                                initialType: TransactionType.expense,
+                                prefilledDate: _selectedDay,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -474,6 +499,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     return TransactionTile(
                       transaction: tx,
                       currencySymbol: appState.currencySymbol,
+                      onTap: () => TransactionDetailsSheet.show(context, tx),
                     );
                   },
                 ),

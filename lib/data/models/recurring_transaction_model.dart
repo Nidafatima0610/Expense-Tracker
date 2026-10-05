@@ -157,25 +157,57 @@ class RecurringTransactionModel {
   }
 
   factory RecurringTransactionModel.fromJson(Map<String, dynamic> json) {
+    final rawAmount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    final validAmount = (rawAmount.isNaN || rawAmount.isInfinite || rawAmount < 0) ? 0.0 : rawAmount;
+    DateTime parsedStartDate;
+    try {
+      parsedStartDate = json['startDate'] != null
+          ? DateTime.parse(json['startDate'] as String)
+          : DateTime.now();
+    } catch (_) {
+      parsedStartDate = DateTime.now();
+    }
+
+    DateTime? parsedEndDate;
+    if (json['endDate'] != null) {
+      try {
+        parsedEndDate = DateTime.parse(json['endDate'] as String);
+      } catch (_) {
+        parsedEndDate = null;
+      }
+    }
+
+    DateTime? parsedLastGen;
+    if (json['lastGeneratedDate'] != null) {
+      try {
+        parsedLastGen = DateTime.parse(json['lastGeneratedDate'] as String);
+      } catch (_) {
+        parsedLastGen = null;
+      }
+    }
+
+    DateTime parsedCreatedAt;
+    try {
+      parsedCreatedAt = json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now();
+    } catch (_) {
+      parsedCreatedAt = DateTime.now();
+    }
+
     return RecurringTransactionModel(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      amount: (json['amount'] as num).toDouble(),
+      id: json['id'] as String? ?? 'rec_${DateTime.now().millisecondsSinceEpoch}',
+      title: json['title'] as String? ?? 'Untitled Rule',
+      amount: validAmount,
       type: TransactionType.fromString(json['type'] as String? ?? 'expense'),
-      category: json['category'] as String? ?? 'General',
+      category: json['category'] as String? ?? 'Other',
       note: json['note'] as String?,
-      startDate: DateTime.parse(json['startDate'] as String),
-      endDate: json['endDate'] != null
-          ? DateTime.parse(json['endDate'] as String)
-          : null,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate,
       frequency: RecurrenceFrequency.fromString(json['frequency'] as String?),
       isActive: json['isActive'] as bool? ?? true,
-      lastGeneratedDate: json['lastGeneratedDate'] != null
-          ? DateTime.parse(json['lastGeneratedDate'] as String)
-          : null,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : DateTime.now(),
+      lastGeneratedDate: parsedLastGen,
+      createdAt: parsedCreatedAt,
     );
   }
 

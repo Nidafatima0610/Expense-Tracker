@@ -326,12 +326,44 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   );
 }
 
+  void _openEditTransaction(BuildContext context, TransactionModel transaction) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddEditTransactionScreen(transactionToEdit: transaction),
+      ),
+    );
+  }
+
+  void _handleDeleteTransaction(BuildContext context, AppState appState, TransactionModel tx) async {
+    final deleted = await appState.deleteTransaction(tx.id);
+    if (deleted != null && context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${tx.title}"'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'UNDO',
+            textColor: AppColors.accent,
+            onPressed: () {
+              appState.undoDeleteTransaction();
+            },
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final appState = AppStateScope.of(context);
+    final currencySymbol = appState.currencySymbol;
+    final groups = appState.groupedFilteredTransactions;
     final filtered = appState.filteredTransactions;
     final hasActiveFilter = appState.hasActiveFilters;
+    final hasSearch = appState.searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -363,7 +395,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           children: [
             // Top Controls: Search Bar & Quick Filters
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
               child: Column(
                 children: [
@@ -372,11 +404,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     controller: _searchController,
                     onChanged: (val) => appState.setSearchQuery(val),
                     decoration: InputDecoration(
-                      hintText: 'Search title, category, or note...',
+                      hintText: 'Search title, category, note, or amount...',
                       prefixIcon: const Icon(Icons.search_rounded, size: 20),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.close_rounded, size: 18),
+                              tooltip: 'Clear search',
                               onPressed: () {
                                 _searchController.clear();
                                 appState.setSearchQuery('');
@@ -525,7 +558,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           const SizedBox(width: 8),
                           TextButton.icon(
                             icon: const Icon(Icons.refresh_rounded, size: 16),
-                            label: const Text('Reset', style: TextStyle(fontSize: 12)),
+                            label: const Text('Clear All', style: TextStyle(fontSize: 12)),
                             onPressed: () {
                               _searchController.clear();
                               appState.resetFilters();
@@ -539,14 +572,90 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               ),
             ),
 
-            // Summary line with count and active filter tags
+            // Active Filter Removable Chips (Requirement 15)
+            if (hasActiveFilter)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (appState.typeFilter != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text('Type: ${appState.typeFilter!.displayName}'),
+                            onDeleted: () => appState.setTypeFilter(null),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (appState.categoryFilter != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text('Category: ${appState.categoryFilter}'),
+                            onDeleted: () => appState.setCategoryFilter(null),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (appState.dateFilter != TransactionDateFilter.all)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text('Date: ${appState.dateFilter.displayName}'),
+                            onDeleted: () => appState.setDateFilter(TransactionDateFilter.all),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (appState.minAmountFilter != null || appState.maxAmountFilter != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text(
+                              'Amount: ${appState.minAmountFilter != null ? CurrencyFormatter.format(appState.minAmountFilter!, symbol: currencySymbol) : '0'} – ${appState.maxAmountFilter != null ? CurrencyFormatter.format(appState.maxAmountFilter!, symbol: currencySymbol) : '∞'}',
+                            ),
+                            onDeleted: () => appState.setAmountFilter(),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      if (appState.sortOption != TransactionSortOption.newest)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: InputChip(
+                            label: Text('Sort: ${appState.sortOption.displayName}'),
+                            onDeleted: () => appState.setSortOption(TransactionSortOption.newest),
+                            deleteIconColor: AppColors.accent,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      ActionChip(
+                        label: const Text('Clear All', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          _searchController.clear();
+                          appState.resetFilters();
+                        },
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Summary line with count and sort status (Requirement 14)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${filtered.length} ${filtered.length == 1 ? 'transaction' : 'transactions'} found',
+                    hasSearch
+                        ? 'Found ${filtered.length} ${filtered.length == 1 ? 'transaction' : 'transactions'} for "${appState.searchQuery.trim()}"'
+                        : '${filtered.length} ${filtered.length == 1 ? 'transaction' : 'transactions'} found',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -556,7 +665,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     ),
                   ),
                   Text(
-                    'Sorted by: ${appState.sortOption.displayName}',
+                    appState.sortOption.displayName,
                     style: TextStyle(
                       fontSize: 11,
                       color: isDark
@@ -568,62 +677,28 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               ),
             ),
 
-            // Active filters preview pill
-            if (hasActiveFilter)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppColors.accent.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.filter_alt_rounded, size: 14, color: AppColors.accent),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Filters active: ${appState.dateFilter.displayName}'
-                        '${appState.typeFilter != null ? ' • ${appState.typeFilter!.displayName}' : ''}'
-                        '${appState.categoryFilter != null ? ' • ${appState.categoryFilter}' : ''}'
-                        '${appState.minAmountFilter != null ? ' • Min: ${CurrencyFormatter.format(appState.minAmountFilter!, symbol: appState.currencySymbol)}' : ''}'
-                        '${appState.maxAmountFilter != null ? ' • Max: ${CurrencyFormatter.format(appState.maxAmountFilter!, symbol: appState.currencySymbol)}' : ''}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.accent,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () {
-                        _searchController.clear();
-                        appState.resetFilters();
-                      },
-                      child: const Icon(Icons.close_rounded, size: 16, color: AppColors.accent),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Transactions List or Empty State
+            // Grouped Transactions List or Empty State (Requirements 3, 4, 5, 6, 24)
             Expanded(
               child: filtered.isEmpty
                   ? EmptyStateWidget(
-                      title: hasActiveFilter
-                          ? 'No Matching Transactions'
-                          : 'No Transactions Saved',
-                      description: hasActiveFilter
-                          ? 'Try adjusting your search criteria, amounts, or clearing active filters.'
-                          : 'Tap below to add your first transaction and start tracking.',
-                      actionLabel: hasActiveFilter ? 'Clear Filters' : 'Add Transaction',
+                      title: hasSearch
+                          ? 'No Results for "${appState.searchQuery.trim()}"'
+                          : (hasActiveFilter
+                              ? 'No Matching Transactions'
+                              : 'No Transactions Saved'),
+                      description: hasSearch
+                          ? 'No transactions matched your search query. Try checking for typos or clear your search.'
+                          : (hasActiveFilter
+                              ? 'Try adjusting your filter criteria, amounts, or clearing active filters.'
+                              : 'Tap below to log your first income or expense transaction.'),
+                      actionLabel: hasSearch
+                          ? 'Clear Search'
+                          : (hasActiveFilter ? 'Clear All Filters' : 'Add Transaction'),
                       onAction: () {
-                        if (hasActiveFilter) {
+                        if (hasSearch) {
+                          _searchController.clear();
+                          appState.setSearchQuery('');
+                        } else if (hasActiveFilter) {
                           _searchController.clear();
                           appState.resetFilters();
                         } else {
@@ -631,16 +706,166 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         }
                       },
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final tx = filtered[index];
-                        return TransactionTile(
-                          transaction: tx,
-                          currencySymbol: appState.currencySymbol,
-                          onTap: () => TransactionDetailsSheet.show(context, tx),
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                      itemCount: groups.length,
+                      itemBuilder: (context, groupIndex) {
+                        final group = groups[groupIndex];
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Date Group Header with Daily Subtotals (Requirement 4)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 14, bottom: 8, left: 4, right: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 4,
+                                        height: 14,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accent,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        group.headerTitle,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.8,
+                                          color: isDark
+                                              ? AppColors.darkTextPrimary
+                                              : AppColors.lightTextPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // Daily Subtotal Badges
+                                  Row(
+                                    children: [
+                                      if (group.totalIncome > 0)
+                                        Container(
+                                          margin: const EdgeInsets.only(right: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.income.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            '+${CurrencyFormatter.format(group.totalIncome, symbol: currencySymbol)}',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.income,
+                                            ),
+                                          ),
+                                        ),
+                                      if (group.totalExpense > 0)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.expense.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            '-${CurrencyFormatter.format(group.totalExpense, symbol: currencySymbol)}',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.expense,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Items in this date group with Swipe Actions (Requirements 5 & 6)
+                            ...group.transactions.map((tx) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Dismissible(
+                                  key: ValueKey(tx.id),
+                                  direction: DismissDirection.horizontal,
+                                  confirmDismiss: (direction) async {
+                                    if (direction == DismissDirection.startToEnd) {
+                                      // Swipe right -> Edit
+                                      _openEditTransaction(context, tx);
+                                      return false; // Do not dismiss
+                                    } else {
+                                      // Swipe left -> Delete with immediate Undo SnackBar
+                                      return true;
+                                    }
+                                  },
+                                  onDismissed: (direction) {
+                                    if (direction == DismissDirection.endToStart) {
+                                      _handleDeleteTransaction(context, appState, tx);
+                                    }
+                                  },
+                                  // Background for Edit (Swipe Right)
+                                  background: Container(
+                                    alignment: Alignment.centerLeft,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.accent,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Edit',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Secondary Background for Delete (Swipe Left)
+                                  secondaryBackground: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.expense,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Delete',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+                                      ],
+                                    ),
+                                  ),
+                                  child: TransactionTile(
+                                    transaction: tx,
+                                    currencySymbol: currencySymbol,
+                                    onTap: () => TransactionDetailsSheet.show(context, tx),
+                                    onDelete: () => _handleDeleteTransaction(context, appState, tx),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
                         );
                       },
                     ),

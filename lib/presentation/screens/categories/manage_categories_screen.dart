@@ -6,6 +6,7 @@ import '../../../data/models/transaction_model.dart';
 import '../../../providers/app_state_scope.dart';
 import '../../widgets/category_icon_widget.dart';
 import '../../widgets/primary_button.dart';
+import 'category_detail_screen.dart';
 
 class ManageCategoriesScreen extends StatefulWidget {
   final TransactionType initialType;
@@ -558,9 +559,18 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen>
             .length;
 
         return Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => CategoryDetailScreen(category: cat),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
               children: [
                 // Icon
                 CategoryIconWidget(
@@ -665,8 +675,9 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen>
               ],
             ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 }

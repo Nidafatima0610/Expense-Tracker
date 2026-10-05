@@ -21,7 +21,7 @@ import '../recurring/recurring_transactions_screen.dart';
 import '../reports/reports_screen.dart';
 import '../transactions/add_edit_transaction_screen.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   final VoidCallback onViewAllTransactions;
   final VoidCallback? onViewReports;
 
@@ -31,15 +31,23 @@ class DashboardScreen extends StatelessWidget {
     this.onViewReports,
   });
 
-  String _getGreeting() {
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  bool _isProcessingAction = false;
+
+  String _getGreeting(String? displayName) {
     final hour = DateTime.now().hour;
-    if (hour < 12) {
-      return 'Good morning';
-    } else if (hour < 17) {
-      return 'Good afternoon';
-    } else {
-      return 'Good evening';
+    final timeGreeting = hour < 12
+        ? 'Good morning'
+        : (hour < 17 ? 'Good afternoon' : 'Good evening');
+
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      return '$timeGreeting, ${displayName.trim()}';
     }
+    return timeGreeting;
   }
 
   void _openAddTransaction(BuildContext context, TransactionType type) {
@@ -83,14 +91,26 @@ class DashboardScreen extends StatelessWidget {
   }
 
   void _openReports(BuildContext context) {
-    if (onViewReports != null) {
-      onViewReports!();
+    if (widget.onViewReports != null) {
+      widget.onViewReports!();
     } else {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => const ReportsScreen(),
         ),
       );
+    }
+  }
+
+  Future<void> _safeAction(Future<void> Function() action) async {
+    if (_isProcessingAction) return;
+    setState(() => _isProcessingAction = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingAction = false);
+      }
     }
   }
 
@@ -137,23 +157,28 @@ class DashboardScreen extends StatelessWidget {
       month: selectedMonth.month,
     );
 
-    // Active Budget Warnings for selected month
+    // Active Budget Warnings for selected month (Prioritized)
     final budgetWarnings = appState.getBudgetWarningsForMonth(
       selectedMonth.year,
       selectedMonth.month,
     );
 
-    // Financial Insights
-    final insights = appState.getFinancialInsights(
+    // Financial Health Summary (Calculated from actual data)
+    final healthSummary = appState.getFinancialHealthSummary(
       selectedMonth.year,
       selectedMonth.month,
     );
+
+    // Upcoming Recurring transactions for in-app reminders
+    final dueRecurring = appState.reminderUpcomingRecurring
+        ? appState.recurringTransactions.where((r) => r.isActive).take(2).toList()
+        : <dynamic>[];
 
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
-            // Instant reactive update
+            // Instant reactive refresh
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -161,7 +186,7 @@ class DashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. Header with greeting and Quick Navigation Icons
+                // 1. Personalized Header with Greeting & Display Name
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -169,7 +194,7 @@ class DashboardScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _getGreeting(),
+                          _getGreeting(appState.displayName),
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -210,19 +235,20 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
 
-                // 2. Dynamic Month Selector Bar
+                // 2. In-App Reminder Banner (if enabled and applicable)
+                if (dueRecurring.isNotEmpty) ...[
+                  _buildRecurringReminderCard(dueRecurring.first, isDark, currencySymbol),
+                  const SizedBox(height: 14),
+                ],
+
+                // 3. Dynamic Month Selector Bar
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.darkSurface
-                        : AppColors.lightSurface,
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : AppColors.lightBorder,
+                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
                     ),
                   ),
                   child: Row(
@@ -238,8 +264,7 @@ class DashboardScreen extends StatelessWidget {
                         onTap: () => _selectMonth(context, appState),
                         borderRadius: BorderRadius.circular(10),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -282,7 +307,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 3. Dynamic Balance Card (All-Time Financial Overview)
+                // 4. Dynamic Balance Card (All-Time Financial Overview)
                 BalanceCard(
                   totalBalance: appState.totalBalance,
                   totalIncome: appState.totalIncome,
@@ -291,21 +316,17 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 4. Quick Actions: Add Income & Add Expense
+                // 5. Quick Actions: Add Income & Add Expense
                 Row(
                   children: [
                     Expanded(
                       child: InkWell(
-                        onTap: () =>
-                            _openAddTransaction(context, TransactionType.income),
+                        onTap: () => _openAddTransaction(context, TransactionType.income),
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.darkSurface
-                                : AppColors.lightSurface,
+                            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: AppColors.income.withValues(alpha: 0.3),
@@ -351,16 +372,12 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: InkWell(
-                        onTap: () =>
-                            _openAddTransaction(context, TransactionType.expense),
+                        onTap: () => _openAddTransaction(context, TransactionType.expense),
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.darkSurface
-                                : AppColors.lightSurface,
+                            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: AppColors.expense.withValues(alpha: 0.3),
@@ -407,7 +424,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
 
-                // Secondary Quick Actions (Reports, Budgets, Calendar, Recurring, Export, Restore)
+                // 6. Secondary Quick Actions (Reports, Budgets, Calendar, Recurring, Export, Restore)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
@@ -450,7 +467,9 @@ class DashboardScreen extends StatelessWidget {
                         isDark: isDark,
                         icon: Icons.file_upload_outlined,
                         label: 'Export CSV',
-                        onTap: () => ExportTransactionsSheet.show(context),
+                        onTap: () => _safeAction(() async {
+                          await ExportTransactionsSheet.show(context);
+                        }),
                       ),
                       const SizedBox(width: 8),
                       _buildQuickActionChip(
@@ -458,15 +477,29 @@ class DashboardScreen extends StatelessWidget {
                         isDark: isDark,
                         icon: Icons.settings_backup_restore_rounded,
                         label: 'Restore Backup',
-                        onTap: () => BackupRestoreDialogs.showRestoreBackup(context),
+                        onTap: () => _safeAction(() async {
+                          await BackupRestoreDialogs.showRestoreBackup(context);
+                        }),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 18),
 
-                // 5. CURRENT / SELECTED MONTH SUMMARY CARD
+                // 7. FINANCIAL HEALTH SUMMARY (Actual Data Insight)
+                _buildFinancialHealthCard(healthSummary, isDark),
+                const SizedBox(height: 18),
+
+                // 8. MULTI-TIER BUDGET ALERTS (Prioritized warnings: 50%, 75%, 90%, 100%, Over)
+                if (budgetWarnings.isNotEmpty) ...[
+                  _buildBudgetAlertsBanner(budgetWarnings, isDark),
+                  const SizedBox(height: 18),
+                ],
+
+                // 9. CURRENT / SELECTED MONTH SUMMARY CARD
                 Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Padding(
                     padding: const EdgeInsets.all(18),
                     child: Column(
@@ -514,12 +547,9 @@ class DashboardScreen extends StatelessWidget {
                               ],
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: (monthBalance >= 0
-                                        ? AppColors.income
-                                        : AppColors.expense)
+                                color: (monthBalance >= 0 ? AppColors.income : AppColors.expense)
                                     .withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -528,9 +558,7 @@ class DashboardScreen extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: monthBalance >= 0
-                                      ? AppColors.income
-                                      : AppColors.expense,
+                                  color: monthBalance >= 0 ? AppColors.income : AppColors.expense,
                                 ),
                               ),
                             ),
@@ -538,7 +566,7 @@ class DashboardScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // Stats Grid: Income, Expenses, Balance, Transactions
+                        // Stats Grid: Income, Expenses, Balance
                         Row(
                           children: [
                             Expanded(
@@ -559,8 +587,7 @@ class DashboardScreen extends StatelessWidget {
                                     fit: BoxFit.scaleDown,
                                     alignment: Alignment.centerLeft,
                                     child: Text(
-                                      CurrencyFormatter.format(monthIncome,
-                                          symbol: currencySymbol),
+                                      CurrencyFormatter.format(monthIncome, symbol: currencySymbol),
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
@@ -589,8 +616,7 @@ class DashboardScreen extends StatelessWidget {
                                     fit: BoxFit.scaleDown,
                                     alignment: Alignment.centerLeft,
                                     child: Text(
-                                      CurrencyFormatter.format(monthExpense,
-                                          symbol: currencySymbol),
+                                      CurrencyFormatter.format(monthExpense, symbol: currencySymbol),
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
@@ -623,9 +649,7 @@ class DashboardScreen extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
-                                        color: monthBalance >= 0
-                                            ? AppColors.income
-                                            : AppColors.expense,
+                                        color: monthBalance >= 0 ? AppColors.income : AppColors.expense,
                                       ),
                                     ),
                                   ),
@@ -652,7 +676,7 @@ class DashboardScreen extends StatelessWidget {
                               ),
                             ),
                             InkWell(
-                              onTap: onViewAllTransactions,
+                              onTap: widget.onViewAllTransactions,
                               child: const Text(
                                 'View in Transactions →',
                                 style: TextStyle(
@@ -670,7 +694,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 6. BUDGET PROGRESS SECTION
+                // 10. BUDGET PROGRESS SECTION
                 _buildBudgetProgressCard(
                   context: context,
                   isDark: isDark,
@@ -680,88 +704,10 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // 7. BUDGET WARNINGS BANNER (Goal 4)
-                if (budgetWarnings.isNotEmpty) ...[
-                  InkWell(
-                    onTap: () => _openBudgets(context),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: (budgetWarnings.any((w) => w.isExceeded)
-                                ? AppColors.expense
-                                : AppColors.warning)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: budgetWarnings.any((w) => w.isExceeded)
-                              ? AppColors.expense
-                              : AppColors.warning,
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    budgetWarnings.any((w) => w.isExceeded)
-                                        ? Icons.error_outline_rounded
-                                        : Icons.warning_amber_rounded,
-                                    color: budgetWarnings.any((w) => w.isExceeded)
-                                        ? AppColors.expense
-                                        : AppColors.warning,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Budget Warning (${budgetWarnings.length})',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      color: budgetWarnings.any((w) => w.isExceeded)
-                                          ? AppColors.expense
-                                          : AppColors.warning,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const Icon(
-                                Icons.arrow_forward_ios_rounded,
-                                size: 12,
-                                color: AppColors.accent,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          ...budgetWarnings.take(2).map((w) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Text(
-                                '• ${w.message}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? AppColors.darkTextPrimary
-                                      : AppColors.lightTextPrimary,
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // 7. SPENDING OVERVIEW & PIE CHART (Goal 1)
+                // 11. SPENDING OVERVIEW & PIE CHART
                 Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Padding(
                     padding: const EdgeInsets.all(18),
                     child: Column(
@@ -779,8 +725,7 @@ class DashboardScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              CurrencyFormatter.format(monthExpense,
-                                  symbol: currencySymbol),
+                              CurrencyFormatter.format(monthExpense, symbol: currencySymbol),
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
@@ -806,8 +751,7 @@ class DashboardScreen extends StatelessWidget {
                                 const SizedBox(height: 6),
                                 const Text(
                                   'No expenses logged for this month',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
                                 ),
                               ],
                             ),
@@ -821,11 +765,9 @@ class DashboardScreen extends StatelessWidget {
                                 borderData: FlBorderData(show: false),
                                 sectionsSpace: 2,
                                 centerSpaceRadius: 38,
-                                sections: List.generate(
-                                    expenseBreakdown.length, (i) {
+                                sections: List.generate(expenseBreakdown.length, (i) {
                                   final item = expenseBreakdown[i];
-                                  final color = _getCategoryColor(
-                                      item.category, appState.categories);
+                                  final color = _getCategoryColor(item.category, appState.categories);
                                   return PieChartSectionData(
                                     color: color,
                                     value: item.amount,
@@ -847,15 +789,13 @@ class DashboardScreen extends StatelessWidget {
 
                           // Top Categories Breakdown Progress Bars
                           ...expenseBreakdown.take(4).map((item) {
-                            final color = _getCategoryColor(
-                                item.category, appState.categories);
+                            final color = _getCategoryColor(item.category, appState.categories);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: Column(
                                 children: [
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Row(
                                         children: [
@@ -896,14 +836,12 @@ class DashboardScreen extends StatelessWidget {
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
                                     child: LinearProgressIndicator(
-                                      value: (item.percentage / 100)
-                                          .clamp(0.0, 1.0),
+                                      value: (item.percentage / 100).clamp(0.0, 1.0),
                                       minHeight: 5,
                                       backgroundColor: isDark
                                           ? AppColors.darkSurfaceSecondary
                                           : AppColors.lightSurfaceSecondary,
-                                      valueColor:
-                                          AlwaysStoppedAnimation<Color>(color),
+                                      valueColor: AlwaysStoppedAnimation<Color>(color),
                                     ),
                                   ),
                                 ],
@@ -917,78 +855,11 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // 8. FINANCIAL INSIGHTS SECTION (Goal 10)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.lightbulb_rounded,
-                                color: AppColors.accent,
-                                size: 18,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'FINANCIAL INSIGHTS',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.1,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        ...insights.insightMessages.map((msg) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('• ',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.accent,
-                                    )),
-                                Expanded(
-                                  child: Text(
-                                    msg,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      height: 1.4,
-                                      color: isDark
-                                          ? AppColors.darkTextPrimary
-                                          : AppColors.lightTextPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // 9. Recent Transactions Header & List
+                // 12. Recent Transactions Header & List
                 SectionHeader(
                   title: 'Recent Transactions',
-                  actionText:
-                      recentTransactions.isNotEmpty ? 'View All' : null,
-                  onActionTap: onViewAllTransactions,
+                  actionText: recentTransactions.isNotEmpty ? 'View All' : null,
+                  onActionTap: widget.onViewAllTransactions,
                 ),
                 const SizedBox(height: 12),
 
@@ -998,8 +869,7 @@ class DashboardScreen extends StatelessWidget {
                     description:
                         'Tap the buttons above to log your first income or expense transaction.',
                     actionLabel: 'Add Expense',
-                    onAction: () =>
-                        _openAddTransaction(context, TransactionType.expense),
+                    onAction: () => _openAddTransaction(context, TransactionType.expense),
                   )
                 else
                   ListView.separated(
@@ -1012,8 +882,7 @@ class DashboardScreen extends StatelessWidget {
                       return TransactionTile(
                         transaction: item,
                         currencySymbol: currencySymbol,
-                        onTap: () =>
-                            TransactionDetailsSheet.show(context, item),
+                        onTap: () => TransactionDetailsSheet.show(context, item),
                       );
                     },
                   ),
@@ -1022,6 +891,340 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // --- Financial Health Summary Card Component ---
+
+  Widget _buildFinancialHealthCard(FinancialHealthSummary health, bool isDark) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.health_and_safety_rounded,
+                        color: AppColors.accent,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'FINANCIAL HEALTH',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    health.generalHealthStatus,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            if (!health.hasSufficientData) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Not enough data yet. Log income and expense transactions to see your savings rate, budget adherence, and spending trends.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ] else ...[
+              // Grid of 4 Health Metrics
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Savings Rate',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          health.savingsRate != null
+                              ? '${health.savingsRate!.toStringAsFixed(1)}%'
+                              : 'N/A',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: (health.savingsRate ?? 0) >= 20
+                                ? AppColors.income
+                                : ((health.savingsRate ?? 0) >= 0 ? AppColors.accent : AppColors.expense),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Budget Adherence',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          health.budgetStatus,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Divider(color: isDark ? AppColors.darkBorder : AppColors.lightBorder, height: 1),
+              const SizedBox(height: 10),
+
+              // Spending trend & Income vs Expense
+              Row(
+                children: [
+                  const Icon(Icons.trending_up_rounded, size: 14, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      health.spendingTrend,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.compare_arrows_rounded, size: 14, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      health.incomeVsExpense,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Informational analysis based on actual records, not professional financial advice.',
+              style: TextStyle(
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Multi-tier Budget Alerts Banner ---
+
+  Widget _buildBudgetAlertsBanner(List<BudgetWarning> warnings, bool isDark) {
+    final highestWarning = warnings.first;
+    final isCritical = highestWarning.isOverBudget || highestWarning.percentage >= 100;
+
+    return InkWell(
+      onTap: () => _openBudgets(context),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: (isCritical ? AppColors.expense : AppColors.warning).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isCritical ? AppColors.expense : AppColors.warning,
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isCritical ? Icons.error_outline_rounded : Icons.warning_amber_rounded,
+                      color: isCritical ? AppColors.expense : AppColors.warning,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Budget Warnings (${warnings.length})',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: isCritical ? AppColors.expense : AppColors.warning,
+                      ),
+                    ),
+                  ],
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 12,
+                  color: AppColors.accent,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...warnings.take(3).map((w) {
+              final String badgeText;
+              final Color badgeColor;
+              if (w.isOverBudget) {
+                badgeText = 'Over Budget';
+                badgeColor = AppColors.expense;
+              } else if (w.percentage >= 100) {
+                badgeText = '100% Reached';
+                badgeColor = AppColors.expense;
+              } else if (w.percentage >= 90) {
+                badgeText = '${w.percentage.toStringAsFixed(0)}% Used';
+                badgeColor = AppColors.warning;
+              } else if (w.percentage >= 75) {
+                badgeText = '75% Used';
+                badgeColor = AppColors.warning;
+              } else {
+                badgeText = '50% Used';
+                badgeColor = AppColors.accent;
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: badgeColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        w.message,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- In-App Recurring Reminder Card ---
+
+  Widget _buildRecurringReminderCard(dynamic recurring, bool isDark, String currencySymbol) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.accent.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.alarm_on_rounded, size: 18, color: AppColors.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Upcoming recurring: ${recurring.title} (${CurrencyFormatter.format(recurring.amount, symbol: currencySymbol)})',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+              ),
+            ),
+          ),
+          InkWell(
+            onTap: () => _openRecurring(context),
+            child: const Text(
+              'View',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1123,6 +1326,8 @@ class DashboardScreen extends StatelessWidget {
     }
 
     return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -1171,8 +1376,7 @@ class DashboardScreen extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -1205,8 +1409,7 @@ class DashboardScreen extends StatelessWidget {
                 icon: const Icon(Icons.add_rounded, size: 16),
                 label: const Text('Set Up Budgets'),
                 style: OutlinedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ] else ...[

@@ -72,24 +72,54 @@ class CategoryBreakdown {
   });
 }
 
+enum BudgetAlertLevel {
+  fiftyPercent,
+  seventyFivePercent,
+  ninetyPercent,
+  hundredPercent,
+  overBudget;
+
+  String get displayName {
+    switch (this) {
+      case BudgetAlertLevel.fiftyPercent:
+        return '50% Used';
+      case BudgetAlertLevel.seventyFivePercent:
+        return '75% Used';
+      case BudgetAlertLevel.ninetyPercent:
+        return '90% Used';
+      case BudgetAlertLevel.hundredPercent:
+        return '100% Reached';
+      case BudgetAlertLevel.overBudget:
+        return 'Over Budget';
+    }
+  }
+}
+
 class BudgetWarning {
   final BudgetModel budget;
   final double spent;
   final double percentage;
   final bool isExceeded;
+  final BudgetAlertLevel alertLevel;
 
   const BudgetWarning({
     required this.budget,
     required this.spent,
     required this.percentage,
     required this.isExceeded,
+    this.alertLevel = BudgetAlertLevel.overBudget,
   });
+
+  bool get isOverBudget => isExceeded || alertLevel == BudgetAlertLevel.overBudget;
 
   String get message {
     if (isExceeded) {
-      return 'You have exceeded your ${budget.category} budget!';
+      return '${budget.category} budget has exceeded its limit.';
     }
-    return 'You have used ${(percentage * 100).toStringAsFixed(0)}% of your ${budget.category} budget.';
+    if (alertLevel == BudgetAlertLevel.hundredPercent) {
+      return '${budget.category} budget limit reached (100%).';
+    }
+    return '${budget.category} budget is ${(percentage * 100).toStringAsFixed(0)}% used.';
   }
 }
 
@@ -172,6 +202,102 @@ class FinancialInsights {
     this.monthOverMonthPercentChange,
     this.hasPreviousMonthData = false,
     this.insightMessages = const [],
+  });
+}
+
+class FinancialHealthSummary {
+  final bool hasSufficientData;
+  final double? savingsRate;
+  final String budgetStatus;
+  final String spendingTrend;
+  final String incomeVsExpense;
+  final String generalHealthStatus;
+  final String adviceDisclaimer;
+
+  const FinancialHealthSummary({
+    required this.hasSufficientData,
+    this.savingsRate,
+    required this.budgetStatus,
+    required this.spendingTrend,
+    required this.incomeVsExpense,
+    required this.generalHealthStatus,
+    this.adviceDisclaimer = 'Informational insights only. Not professional financial advice.',
+  });
+}
+
+class TransactionDateGroup {
+  final String headerTitle;
+  final DateTime date;
+  final List<TransactionModel> transactions;
+  final double totalIncome;
+  final double totalExpense;
+  final double netBalance;
+
+  const TransactionDateGroup({
+    required this.headerTitle,
+    required this.date,
+    required this.transactions,
+    required this.totalIncome,
+    required this.totalExpense,
+    required this.netBalance,
+  });
+}
+
+class CategoryInsights {
+  final String categoryName;
+  final bool isExpense;
+  final double totalAmount;
+  final int count;
+  final double averageAmount;
+  final double largestAmount;
+  final Map<String, double> monthlyTrend;
+  final List<TransactionModel> relatedTransactions;
+
+  const CategoryInsights({
+    required this.categoryName,
+    required this.isExpense,
+    required this.totalAmount,
+    required this.count,
+    required this.averageAmount,
+    required this.largestAmount,
+    required this.monthlyTrend,
+    required this.relatedTransactions,
+  });
+}
+
+class MonthlyOverviewItem {
+  final int month;
+  final String monthName;
+  final double income;
+  final double expense;
+  final double net;
+  final int transactionCount;
+
+  const MonthlyOverviewItem({
+    required this.month,
+    required this.monthName,
+    required this.income,
+    required this.expense,
+    required this.net,
+    required this.transactionCount,
+  });
+}
+
+class YearlyOverviewData {
+  final int year;
+  final double totalIncome;
+  final double totalExpense;
+  final double netBalance;
+  final List<MonthlyOverviewItem> monthlyBreakdown;
+  final bool hasData;
+
+  const YearlyOverviewData({
+    required this.year,
+    required this.totalIncome,
+    required this.totalExpense,
+    required this.netBalance,
+    required this.monthlyBreakdown,
+    required this.hasData,
   });
 }
 
@@ -535,6 +661,57 @@ class AppState extends ChangeNotifier {
     return filtered;
   }
 
+  List<TransactionDateGroup> get groupedFilteredTransactions {
+    final list = filteredTransactions;
+    if (list.isEmpty) return const [];
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    final Map<DateTime, List<TransactionModel>> map = {};
+    for (final tx in list) {
+      final key = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      map.putIfAbsent(key, () => []).add(tx);
+    }
+
+    final List<TransactionDateGroup> groups = [];
+    map.forEach((date, txs) {
+      String title;
+      if (date == today) {
+        title = 'TODAY';
+      } else if (date == yesterday) {
+        title = 'YESTERDAY';
+      } else {
+        title = DateFormat('d MMMM yyyy').format(date).toUpperCase();
+      }
+
+      double income = 0.0;
+      double expense = 0.0;
+      for (final t in txs) {
+        if (t.isIncome) income += t.amount;
+        if (t.isExpense) expense += t.amount;
+      }
+
+      groups.add(TransactionDateGroup(
+        headerTitle: title,
+        date: date,
+        transactions: txs,
+        totalIncome: income,
+        totalExpense: expense,
+        netBalance: income - expense,
+      ));
+    });
+
+    if (_sortOption == TransactionSortOption.oldest) {
+      groups.sort((a, b) => a.date.compareTo(b.date));
+    } else {
+      groups.sort((a, b) => b.date.compareTo(a.date));
+    }
+
+    return groups;
+  }
+
   // --- Category Breakdown Calculations ---
 
   List<CategoryBreakdown> getCategoryBreakdown({
@@ -640,19 +817,35 @@ class AppState extends ChangeNotifier {
     final List<BudgetWarning> warnings = [];
 
     for (final b in monthBudgets) {
+      if (b.amount <= 0) continue;
       final spent = getSpentForBudget(b);
-      final ratio = b.amount > 0 ? spent / b.amount : 0.0;
-      if (ratio >= 0.8) {
+      final ratio = spent / b.amount;
+
+      if (ratio >= 0.5) {
+        final BudgetAlertLevel level;
+        if (ratio > 1.0) {
+          level = BudgetAlertLevel.overBudget;
+        } else if ((ratio - 1.0).abs() < 0.001) {
+          level = BudgetAlertLevel.hundredPercent;
+        } else if (ratio >= 0.90) {
+          level = BudgetAlertLevel.ninetyPercent;
+        } else if (ratio >= 0.75) {
+          level = BudgetAlertLevel.seventyFivePercent;
+        } else {
+          level = BudgetAlertLevel.fiftyPercent;
+        }
+
         warnings.add(BudgetWarning(
           budget: b,
           spent: spent,
           percentage: ratio,
-          isExceeded: ratio >= 1.0,
+          isExceeded: ratio > 1.0,
+          alertLevel: level,
         ));
       }
     }
 
-    // Sort: exceeded first, then highest percentage
+    // Sort: over budget first, then highest percentage
     warnings.sort((a, b) {
       if (a.isExceeded && !b.isExceeded) return -1;
       if (!a.isExceeded && b.isExceeded) return 1;
@@ -1134,11 +1327,213 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteTransaction(String id) async {
+  TransactionModel? _recentlyDeletedTransaction;
+  int? _recentlyDeletedIndex;
+
+  TransactionModel? get recentlyDeletedTransaction => _recentlyDeletedTransaction;
+
+  Future<TransactionModel?> deleteTransaction(String id) async {
     await isReady;
-    _transactions.removeWhere((t) => t.id == id);
+    final index = _transactions.indexWhere((t) => t.id == id);
+    if (index != -1) {
+      final removed = _transactions.removeAt(index);
+      _recentlyDeletedTransaction = removed;
+      _recentlyDeletedIndex = index;
+      notifyListeners();
+      await repository.saveTransactions(_transactions);
+      return removed;
+    }
+    return null;
+  }
+
+  Future<bool> undoDeleteTransaction() async {
+    await isReady;
+    if (_recentlyDeletedTransaction != null) {
+      final txToRestore = _recentlyDeletedTransaction!;
+      final targetIndex = (_recentlyDeletedIndex != null &&
+              _recentlyDeletedIndex! >= 0 &&
+              _recentlyDeletedIndex! <= _transactions.length)
+          ? _recentlyDeletedIndex!
+          : 0;
+
+      _transactions.insert(targetIndex, txToRestore);
+      _sortTransactions();
+      _recentlyDeletedTransaction = null;
+      _recentlyDeletedIndex = null;
+      notifyListeners();
+      await repository.saveTransactions(_transactions);
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> restoreExactTransaction(TransactionModel transaction) async {
+    await isReady;
+    _transactions.removeWhere((t) => t.id == transaction.id);
+    _transactions.add(transaction);
+    _sortTransactions();
     notifyListeners();
     await repository.saveTransactions(_transactions);
+  }
+
+  // --- Financial Health Summary (Actual Data Calculations) ---
+
+  FinancialHealthSummary getFinancialHealthSummary(int year, int month) {
+    final monthTx = _transactions
+        .where((t) => t.date.year == year && t.date.month == month)
+        .toList();
+
+    if (monthTx.isEmpty) {
+      return const FinancialHealthSummary(
+        hasSufficientData: false,
+        budgetStatus: 'No data',
+        spendingTrend: 'Not enough data yet.',
+        incomeVsExpense: 'Not enough data yet.',
+        generalHealthStatus: 'Not enough data yet.',
+      );
+    }
+
+    final income = monthTx.where((t) => t.isIncome).fold(0.0, (s, t) => s + t.amount);
+    final expense = monthTx.where((t) => t.isExpense).fold(0.0, (s, t) => s + t.amount);
+
+    double? savingsRate;
+    if (income > 0) {
+      savingsRate = ((income - expense) / income) * 100;
+    }
+
+    // Budget Adherence
+    final monthBudgets = getBudgetsForMonth(year, month).where((b) => b.isEnabled).toList();
+    final String budgetStatus;
+    if (monthBudgets.isEmpty) {
+      budgetStatus = 'No active budgets set for this month';
+    } else {
+      final withinLimit = monthBudgets.where((b) => getSpentForBudget(b) <= b.amount).length;
+      budgetStatus = '$withinLimit of ${monthBudgets.length} budgets within limit';
+    }
+
+    // Spending Trend compared to previous month
+    final prevMonth = month == 1 ? 12 : month - 1;
+    final prevYear = month == 1 ? year - 1 : year;
+    final prevExpense = _transactions
+        .where((t) => t.isExpense && t.date.year == prevYear && t.date.month == prevMonth)
+        .fold(0.0, (s, t) => s + t.amount);
+
+    final String spendingTrend;
+    if (prevExpense <= 0) {
+      spendingTrend = 'First month of recorded spending data';
+    } else {
+      final diff = expense - prevExpense;
+      final pct = ((diff.abs()) / prevExpense) * 100;
+      if (diff > 0) {
+        spendingTrend = 'Expenses increased ${pct.toStringAsFixed(0)}% compared with last month';
+      } else if (diff < 0) {
+        spendingTrend = 'Expenses decreased ${pct.toStringAsFixed(0)}% compared with last month';
+      } else {
+        spendingTrend = 'Spending identical to last month';
+      }
+    }
+
+    // Income vs Expense
+    final String incomeVsExpense;
+    if (income == 0 && expense == 0) {
+      incomeVsExpense = 'No activity';
+    } else if (income >= expense) {
+      incomeVsExpense = 'Income exceeds expenses by $_currencySymbol${(income - expense).toStringAsFixed(0)}';
+    } else {
+      incomeVsExpense = 'Expenses exceed income by $_currencySymbol${(expense - income).toStringAsFixed(0)}';
+    }
+
+    String healthStatus;
+    if (savingsRate != null && savingsRate >= 20 && (monthBudgets.isEmpty || monthBudgets.every((b) => getSpentForBudget(b) <= b.amount))) {
+      healthStatus = 'Strong Financial Health';
+    } else if (income >= expense) {
+      healthStatus = 'Stable Financial Standing';
+    } else {
+      healthStatus = 'Spending Exceeds Income';
+    }
+
+    return FinancialHealthSummary(
+      hasSufficientData: true,
+      savingsRate: savingsRate,
+      budgetStatus: budgetStatus,
+      spendingTrend: spendingTrend,
+      incomeVsExpense: incomeVsExpense,
+      generalHealthStatus: healthStatus,
+    );
+  }
+
+  // --- Category Insights Helper ---
+
+  CategoryInsights getCategoryInsights(String categoryName, {TransactionType? type}) {
+    final related = _transactions.where((t) {
+      final matchCat = t.category.toLowerCase() == categoryName.toLowerCase();
+      if (!matchCat) return false;
+      if (type != null) return t.type == type;
+      return true;
+    }).toList();
+
+    final isExp = type != null ? type == TransactionType.expense : true;
+    final total = related.fold(0.0, (sum, t) => sum + t.amount);
+    final count = related.length;
+    final avg = count > 0 ? total / count : 0.0;
+    final largest = count > 0 ? related.map((t) => t.amount).reduce((a, b) => a > b ? a : b) : 0.0;
+
+    final Map<String, double> trend = {};
+    final now = DateTime.now();
+    for (int i = 5; i >= 0; i--) {
+      final d = DateTime(now.year, now.month - i, 1);
+      final label = DateFormat('MMM yy').format(d);
+      final monthSum = related
+          .where((t) => t.date.year == d.year && t.date.month == d.month)
+          .fold(0.0, (sum, t) => sum + t.amount);
+      trend[label] = monthSum;
+    }
+
+    return CategoryInsights(
+      categoryName: categoryName,
+      isExpense: isExp,
+      totalAmount: total,
+      count: count,
+      averageAmount: avg,
+      largestAmount: largest,
+      monthlyTrend: trend,
+      relatedTransactions: related,
+    );
+  }
+
+  // --- Yearly Overview Helper ---
+
+  YearlyOverviewData getYearlyOverview(int year) {
+    final yearTx = _transactions.where((t) => t.date.year == year).toList();
+    final double totalIncome = yearTx.where((t) => t.isIncome).fold(0.0, (s, t) => s + t.amount);
+    final double totalExpense = yearTx.where((t) => t.isExpense).fold(0.0, (s, t) => s + t.amount);
+    final double netBalance = totalIncome - totalExpense;
+
+    final List<MonthlyOverviewItem> monthly = [];
+    for (int m = 1; m <= 12; m++) {
+      final mTx = yearTx.where((t) => t.date.month == m).toList();
+      final inc = mTx.where((t) => t.isIncome).fold(0.0, (s, t) => s + t.amount);
+      final exp = mTx.where((t) => t.isExpense).fold(0.0, (s, t) => s + t.amount);
+      final monthDate = DateTime(year, m, 1);
+      final name = DateFormat('MMMM').format(monthDate);
+      monthly.add(MonthlyOverviewItem(
+        month: m,
+        monthName: name,
+        income: inc,
+        expense: exp,
+        net: inc - exp,
+        transactionCount: mTx.length,
+      ));
+    }
+
+    return YearlyOverviewData(
+      year: year,
+      totalIncome: totalIncome,
+      totalExpense: totalExpense,
+      netBalance: netBalance,
+      monthlyBreakdown: monthly,
+      hasData: yearTx.isNotEmpty,
+    );
   }
 
   Future<void> duplicateTransaction(TransactionModel original) async {
@@ -1282,7 +1677,49 @@ class AppState extends ChangeNotifier {
     await repository.saveTransactions(_transactions);
   }
 
-  // --- Preferences ---
+  // --- Preferences & Onboarding ---
+
+  bool get hasCompletedOnboarding => preferencesService.getHasCompletedOnboarding();
+
+  Future<void> completeOnboarding() async {
+    await preferencesService.setHasCompletedOnboarding(true);
+    notifyListeners();
+  }
+
+  String get displayName => preferencesService.getDisplayName();
+
+  Future<void> setDisplayName(String name) async {
+    await preferencesService.setDisplayName(name);
+    notifyListeners();
+  }
+
+  double? get monthlyBudgetPreference => preferencesService.getMonthlyBudgetPreference();
+
+  Future<void> setMonthlyBudgetPreference(double? amount) async {
+    await preferencesService.setMonthlyBudgetPreference(amount);
+    notifyListeners();
+  }
+
+  bool get reminderUpcomingRecurring => preferencesService.getReminderUpcomingRecurring();
+
+  Future<void> setReminderUpcomingRecurring(bool val) async {
+    await preferencesService.setReminderUpcomingRecurring(val);
+    notifyListeners();
+  }
+
+  bool get reminderBudgetWarnings => preferencesService.getReminderBudgetWarnings();
+
+  Future<void> setReminderBudgetWarnings(bool val) async {
+    await preferencesService.setReminderBudgetWarnings(val);
+    notifyListeners();
+  }
+
+  bool get reminderMonthlyReview => preferencesService.getReminderMonthlyReview();
+
+  Future<void> setReminderMonthlyReview(bool val) async {
+    await preferencesService.setReminderMonthlyReview(val);
+    notifyListeners();
+  }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     _themeMode = mode;
